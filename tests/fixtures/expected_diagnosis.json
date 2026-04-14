@@ -1,0 +1,334 @@
+{
+  "dataset": "traceweaver_5gc_expected_diagnosis",
+  "version": "2026-04-14-initial",
+  "notes": [
+    "这是 expected_diagnosis 的人工初稿，用于后续 pytest 评测与 LLM 诊断对齐。",
+    "当前优先覆盖 canonical / 可交付样本；06 仍未有正式样本，因此只记录候选结论，不作为 canonical 评测基线。",
+    "08 与 15 涉及 SBI 时，应优先对 tcp.port==7777 强制 decode as http2。"
+  ],
+  "items": [
+    {
+      "pcap_file": "01_registration_success.pcapng",
+      "scenario_id": "01",
+      "scenario_name": "registration_success",
+      "sample_status": "canonical",
+      "expected": {
+        "verdict": "OK",
+        "failure_point": null,
+        "root_cause": null,
+        "confidence": "high"
+      },
+      "required_signals": [
+        "REGISTRATION_REQUEST",
+        "AUTHENTICATION_REQUEST",
+        "AUTHENTICATION_RESPONSE",
+        "SECURITY_MODE_COMMAND",
+        "SECURITY_MODE_COMPLETE",
+        "REGISTRATION_ACCEPT",
+        "REGISTRATION_COMPLETE"
+      ],
+      "forbidden_signals": [
+        "REGISTRATION_REJECT",
+        "AUTHENTICATION_FAILURE",
+        "SECURITY_MODE_REJECT"
+      ],
+      "limitations": []
+    },
+    {
+      "pcap_file": "02_registration_and_pdu_session_success.pcapng",
+      "scenario_id": "02",
+      "scenario_name": "registration_and_pdu_session_success",
+      "sample_status": "canonical",
+      "expected": {
+        "verdict": "OK",
+        "failure_point": null,
+        "root_cause": null,
+        "confidence": "high"
+      },
+      "required_signals": [
+        "REGISTRATION_ACCEPT",
+        "PDU_SESSION_ESTABLISHMENT_REQUEST",
+        "PDU_SESSION_ESTABLISHMENT_ACCEPT",
+        "PFCP_SESSION_ESTABLISHMENT"
+      ],
+      "forbidden_signals": [
+        "PDU_SESSION_ESTABLISHMENT_REJECT",
+        "REGISTRATION_REJECT"
+      ],
+      "limitations": []
+    },
+    {
+      "pcap_file": "03_registration_reject.pcapng",
+      "scenario_id": "03",
+      "scenario_name": "registration_reject",
+      "sample_status": "canonical",
+      "expected": {
+        "verdict": "FAIL",
+        "failure_point": "REGISTRATION",
+        "root_cause": "unknown_or_unprovisioned_subscriber",
+        "confidence": "high"
+      },
+      "required_signals": [
+        "REGISTRATION_REQUEST",
+        "REGISTRATION_REJECT"
+      ],
+      "required_causes": [
+        "UE_IDENTITY_CANNOT_BE_DERIVED_FROM_NETWORK"
+      ],
+      "limitations": []
+    },
+    {
+      "pcap_file": "04_authentication_failure.pcapng",
+      "scenario_id": "04",
+      "scenario_name": "authentication_failure",
+      "sample_status": "canonical",
+      "expected": {
+        "verdict": "FAIL",
+        "failure_point": "AUTHENTICATION",
+        "root_cause": "aka_mac_mismatch_or_bad_subscription_key",
+        "confidence": "high"
+      },
+      "required_signals": [
+        "AUTHENTICATION_REQUEST",
+        "AUTHENTICATION_FAILURE",
+        "AUTHENTICATION_REJECT"
+      ],
+      "limitations": []
+    },
+    {
+      "pcap_file": "05_pdu_session_reject.pcapng",
+      "scenario_id": "05",
+      "scenario_name": "pdu_session_reject",
+      "sample_status": "usable_with_note",
+      "expected": {
+        "verdict": "FAIL",
+        "failure_point": "PDU_SESSION_ESTABLISHMENT",
+        "root_cause": "sm_forwarding_failure_or_payload_not_forwarded",
+        "confidence": "medium"
+      },
+      "required_signals": [
+        "PDU_SESSION_ESTABLISHMENT_REQUEST"
+      ],
+      "optional_signals": [
+        "PDU_SESSION_ESTABLISHMENT_REJECT",
+        "5GSM_STATUS"
+      ],
+      "limitations": [
+        "该样本更接近 forwarding failure，而非教科书式 PDU Session Reject。"
+      ]
+    },
+    {
+      "pcap_file": "05_pdu_session_reject_clean.pcapng",
+      "scenario_id": "05_clean",
+      "scenario_name": "pdu_session_reject_clean",
+      "sample_status": "usable_with_note",
+      "expected": {
+        "verdict": "FAIL",
+        "failure_point": "PDU_SESSION_ESTABLISHMENT",
+        "root_cause": "sm_forwarding_failure_or_payload_not_forwarded",
+        "confidence": "medium"
+      },
+      "required_signals": [
+        "PDU_SESSION_ESTABLISHMENT_REQUEST"
+      ],
+      "limitations": [
+        "重采后语义仍偏 forwarding failure。"
+      ]
+    },
+    {
+      "pcap_file": "07_pfcp_failure.pcapng",
+      "scenario_id": "07",
+      "scenario_name": "pfcp_failure",
+      "sample_status": "canonical",
+      "expected": {
+        "verdict": "FAIL",
+        "failure_point": "PDU_SESSION_ESTABLISHMENT",
+        "root_cause": "upf_or_pfcp_downstream_unavailable",
+        "confidence": "high"
+      },
+      "required_signals": [
+        "REGISTRATION_ACCEPT",
+        "PDU_SESSION_ESTABLISHMENT_REQUEST",
+        "T3580_RETRY"
+      ],
+      "optional_signals": [
+        "PFCP_SESSION_ESTABLISHMENT_REQUEST"
+      ],
+      "limitations": []
+    },
+    {
+      "pcap_file": "08_sbi_failure.pcapng",
+      "scenario_id": "08",
+      "scenario_name": "sbi_failure",
+      "sample_status": "canonical",
+      "expected": {
+        "verdict": "FAIL",
+        "failure_point": "AUTHENTICATION_OR_REGISTRATION_DOWNSTREAM_SBI",
+        "root_cause": "udm_unavailable_causing_ausf_auth_chain_failure",
+        "confidence": "high"
+      },
+      "required_signals": [
+        "REGISTRATION_REQUEST",
+        "REGISTRATION_REJECT",
+        "SBI_HTTP2_REQUEST"
+      ],
+      "required_sbi_paths": [
+        "/nausf-auth/v1/ue-authentications",
+        "/nnrf-disc/v1/nf-instances?target-nf-type=UDM&requester-nf-type=AUSF"
+      ],
+      "limitations": [
+        "分析时应优先对 tcp.port==7777 强制 decode as http2。"
+      ]
+    },
+    {
+      "pcap_file": "09_multi_ue_concurrent.pcapng",
+      "scenario_id": "09",
+      "scenario_name": "multi_ue_concurrent",
+      "sample_status": "canonical",
+      "expected": {
+        "verdict": "OK",
+        "failure_point": null,
+        "root_cause": null,
+        "confidence": "medium"
+      },
+      "required_signals": [
+        "MULTI_UE_CONCURRENT_REGISTRATION"
+      ],
+      "limitations": [
+        "重点不在单 UE 成败，而在多 UE 会话隔离与关联正确性。"
+      ]
+    },
+    {
+      "pcap_file": "10_deregistration.pcapng",
+      "scenario_id": "10",
+      "scenario_name": "deregistration",
+      "sample_status": "canonical",
+      "expected": {
+        "verdict": "OK",
+        "failure_point": null,
+        "root_cause": null,
+        "confidence": "medium"
+      },
+      "required_signals": [
+        "DEREGISTRATION_REQUEST_UE_ORIG",
+        "DEREGISTRATION_ACCEPT_UE_ORIG"
+      ],
+      "limitations": [
+        "CLI 去注册后 UE 可能自动再次注册；评测时应聚焦去注册链路本身。"
+      ]
+    },
+    {
+      "pcap_file": "11_registration_retry.pcapng",
+      "scenario_id": "11",
+      "scenario_name": "registration_retry",
+      "sample_status": "canonical",
+      "expected": {
+        "verdict": "FAIL_THEN_OK",
+        "failure_point": "AUTHENTICATION_ON_FIRST_ATTEMPT",
+        "root_cause": "first_attempt_bad_key_then_retry_with_good_key",
+        "confidence": "high"
+      },
+      "required_signals": [
+        "AUTHENTICATION_FAILURE",
+        "AUTHENTICATION_REJECT",
+        "RETRY_REGISTRATION_REQUEST",
+        "REGISTRATION_ACCEPT"
+      ],
+      "limitations": []
+    },
+    {
+      "pcap_file": "12_service_request.pcapng",
+      "scenario_id": "12",
+      "scenario_name": "service_request",
+      "sample_status": "canonical",
+      "expected": {
+        "verdict": "OK",
+        "failure_point": null,
+        "root_cause": null,
+        "confidence": "high"
+      },
+      "required_signals": [
+        "CM_IDLE_BEFORE_TRIGGER",
+        "SERVICE_REQUEST",
+        "SERVICE_ACCEPT"
+      ],
+      "limitations": []
+    },
+    {
+      "pcap_file": "13_pdu_session_release.pcapng",
+      "scenario_id": "13",
+      "scenario_name": "pdu_session_release",
+      "sample_status": "canonical",
+      "expected": {
+        "verdict": "OK",
+        "failure_point": null,
+        "root_cause": null,
+        "confidence": "high"
+      },
+      "required_signals": [
+        "PDU_SESSION_RELEASE_REQUEST",
+        "PDU_SESSION_RELEASE_COMMAND",
+        "PFCP_SESSION_DELETION"
+      ],
+      "limitations": []
+    },
+    {
+      "pcap_file": "15_partial_visibility_multi_host.pcapng",
+      "scenario_id": "15",
+      "scenario_name": "partial_visibility_multi_host",
+      "sample_status": "canonical",
+      "expected": {
+        "verdict": "INCONCLUSIVE",
+        "failure_point": null,
+        "root_cause": "capture_scope_is_intentionally_partial",
+        "confidence": "high"
+      },
+      "required_signals": [
+        "NGAP_VISIBLE",
+        "SBI_HTTP2_VISIBLE"
+      ],
+      "forbidden_signals": [
+        "FULL_PFCP_DETAIL_EXPECTED"
+      ],
+      "limitations": [
+        "该样本故意只保留 38412/7777 端口，应该输出 not_captured/limitations，而不是伪完整结论。"
+      ]
+    },
+    {
+      "pcap_file": "16_truncated_or_lossy_capture.pcapng",
+      "scenario_id": "16",
+      "scenario_name": "truncated_or_lossy_capture",
+      "sample_status": "canonical",
+      "expected": {
+        "verdict": "INCONCLUSIVE",
+        "failure_point": "UNKNOWN_DUE_TO_TRUNCATION",
+        "root_cause": "capture_stopped_early",
+        "confidence": "high"
+      },
+      "required_signals": [
+        "PARTIAL_REGISTRATION_CHAIN"
+      ],
+      "limitations": [
+        "抓包被人为提前停止，输出必须强调 not_captured/ambiguous。"
+      ]
+    },
+    {
+      "pcap_file": "06_security_mode_reject_candidate.pcapng",
+      "scenario_id": "06_candidate",
+      "scenario_name": "security_mode_reject_candidate",
+      "sample_status": "candidate_only",
+      "expected": {
+        "verdict": "FAIL",
+        "failure_point": "REGISTRATION",
+        "root_cause": "ue_security_capabilities_mismatch",
+        "confidence": "medium"
+      },
+      "required_signals": [
+        "REGISTRATION_REJECT"
+      ],
+      "limitations": [
+        "该样本不是正式 06；当前更像 UE_SECURITY_CAP_MISMATCH 导致的 Registration Reject。"
+      ]
+    }
+  ]
+}

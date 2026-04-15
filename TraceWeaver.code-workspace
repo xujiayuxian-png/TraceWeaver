@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../open5gs"
+		},
+		{
+			"path": "../mcp"
 		}
 	],
 	"settings": {}

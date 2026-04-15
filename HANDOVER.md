@@ -1,0 +1,297 @@
+# TraceWeaver 项目交接文档
+
+**交接日期**: 2026-04-15  
+**项目版本**: v0.1.0  
+**交接人**: AI Assistant  
+**状态**: ✅ Phase 1 完成，核心链路已打通
+
+---
+
+## 1. 项目概述
+
+TraceWeaver 是一个 5GC/Open5GS 网络包分析工具，通过解析 pcap 文件提取 5G 核心网的关键协议交互，识别网络事件，诊断故障根因。
+
+### 核心能力
+- **多协议提取**: NGAP, NAS-5GS, HTTP2 SBI, PFCP
+- **会话关联**: UE 会话分组 → PDU 会话组装 → PFCP 流关联
+- **事件识别**: 5GMM/5GSM 消息类型映射为结构化事件
+- **跨协议关联**: SBI 调用关联 UE，PFCP 关联 PDU Session
+
+---
+
+## 2. 已完成的功能（Phase 1）
+
+### 2.1 CLI 命令（6个）
+
+| 命令 | 功能 | 示例 |
+|------|------|------|
+| `inspect-pcap` | pcap 基础元信息检查 | `traceweaver inspect-pcap file.pcapng` |
+| `extract-records` | 原始协议记录提取 | `traceweaver extract-records file.pcapng` |
+| `extract-events` | NAS 事件识别 | `traceweaver extract-events file.pcapng` |
+| `extract-sessions` | UE Session 分组 | `traceweaver extract-sessions file.pcapng --compact` |
+| `extract-sbi` | HTTP2 SBI 调用提取 | `traceweaver extract-sbi file.pcapng --compact` |
+| `extract-pdu-sessions` | PDU Session 组装 | `traceweaver extract-pdu-sessions file.pcapng` |
+
+### 2.2 核心数据流
+
+```
+pcap → extract_5gc_records() → NormalizedRecord[]
+                              ↓
+                    group_ue_sessions() → UESession[]
+                              ↓
+                    correlate_sbi_to_sessions() → UESession + SBI calls
+                              ↓
+                    build_pdu_sessions_for_ue() → PDUSessionFlow[]
+                              ↓
+                    correlate_pfcp_to_pdu() → PDUSessionFlow + PFCP flows
+```
+
+### 2.3 关键算法
+
+1. **UE Session 分组**
+   - Key: `(RAN-UE-NGAP-ID, AMF-UE-NGAP-ID)`
+   - 处理无 UE ID 的 NAS 帧：单候选时间窗口挂接
+
+2. **SBI 配对**
+   - Key: `tcp.stream + http2.streamid`
+   - 合并 request/response 为 SBICall
+
+3. **SBI 归属 UE**
+   - 高置信度：URL path 中的 SUCI/SUPI
+   - 中置信度：单候选时间窗口
+
+4. **PDU 组装**
+   - 基于 5GSM 事件的 `pdu_session_id`
+   - nsmf-pdusession 按路径 `_{pdu_id}` 或时间窗口归属
+
+5. **PFCP 关联**
+   - SMF IP + 时间窗口（首版）
+
+---
+
+## 3. 代码结构
+
+```
+traceweaver/
+├── __main__.py              # CLI 入口
+├── cli.py                   # CLI 命令定义 (6个命令)
+├── models/                  # Pydantic 数据模型
+│   ├── capture.py           # CaptureInspection
+│   ├── events.py            # DetectedEvent, DetectedEventSet
+│   ├── records.py         # NormalizedRecord, ExtractedRecordSet
+│   ├── sbi.py             # SBICall, SBICallSet
+│   ├── sessions.py        # UESession, UESessionSet
+│   └── pdu.py             # PDUSessionFlow, PFCPFlow, PDUSessionSet
+├── events/                  # 事件识别层
+│   └── identify.py        # NAS_MM_EVENT_MAP, NAS_SM_EVENT_MAP
+├── ingest/                  # 数据摄入层
+│   ├── __init__.py        # 导出 extract_* 函数
+│   ├── pcap.py            # inspect_capture
+│   ├── records.py         # extract_5gc_records
+│   ├── events.py          # extract_5gc_events
+│   ├── sbi.py             # extract_sbi_calls
+│   ├── sessions.py        # extract_ue_sessions
+│   └── pdu.py             # extract_pdu_sessions
+├── correlate/             # 关联算法层
+│   ├── ue_sessions.py     # group_ue_sessions
+│   ├── sbi.py             # pair_sbi_calls, correlate_sbi_to_sessions
+│   └── pdu.py             # build_pdu_sessions_for_ue, correlate_pfcp_to_pdu
+└── tshark/                # tshark 交互层
+    ├── __init__.py
+    ├── tools.py           # get_tshark_version, list_tshark_fields
+    └── extract.py         # _run_tshark_extract, extract_5gc_records
+
+tests/
+├── fixtures/pcap/         # 测试样本 (01-16 场景)
+│   ├── 01_registration_success.pcapng
+│   ├── 02_registration_and_pdu_session_success.pcapng
+│   ├── 03_registration_reject.pcapng
+│   ├── 04_authentication_failure.pcapng
+│   ├── 05_pdu_session_reject.pcapng
+│   ├── 07_pfcp_failure.pcapng
+│   ├── 08_sbi_failure.pcapng
+│   ├── 09_multi_ue_concurrent.pcapng
+│   ├── 10_deregistration.pcapng
+│   ├── 11_registration_retry.pcapng
+│   ├── 12_service_request.pcapng
+│   ├── 13_pdu_session_release.pcapng
+│   ├── 15_partial_visibility_multi_host.pcapng
+│   ├── 16_truncated_or_lossy_capture.pcapng
+│   └── expected_diagnosis.json   # 预期诊断结果
+├── test_extract_records.py
+├── test_extract_events.py
+├── test_extract_sessions.py
+├── test_extract_sbi.py
+└── test_extract_pdu.py
+
+plan/
+├── 5gc-mvp-roadmap.md     # 路线图
+├── cross-protocol-correlation.md  # 跨协议关联设计
+├── intelligence-first-architecture.md
+├── platform-architecture.md
+└── test-pcap-checklist.md
+```
+
+---
+
+## 4. 关键设计决策
+
+### 4.1 tshark 字段规范化
+```python
+# occurrence=a + aggregator='|' 会产生 1|1 这样的聚合值
+# 我们统一做去重取首值处理
+SINGLE_VALUE_FIELDS = { "ngap.RAN_UE_NGAP_ID", "nas_5gs.mm.message_type", ... }
+```
+
+### 4.2 受保护 5GSM 消息归属
+- 问题：安全模式后的 5GSM 帧没有 NGAP UE ID
+- 解决：对无 UE ID 的 nas_5gs 帧，用保守的单候选时间窗口挂接
+- 实现位置：`traceweaver/correlate/ue_sessions.py` line 70-82
+
+### 4.3 SBI URL 中 SUPI 覆盖率
+| 服务 | URL 含 SUPI | 说明 |
+|------|------------|------|
+| nudm-ueau/uecm/sdm | ✅ | URL path 含 SUCI/SUPI |
+| nausf-auth | ❌ | SUCI 在 body |
+| nsmf-pdusession | ❌ (创建时) | modify 时路径有 _{pdu_id} |
+| npcf-* | ❌ | body |
+
+### 4.4 关联策略优先级
+1. **直接 identity** (URL path) → 高置信度
+2. **单候选时间窗口** → 中置信度
+3. **多候选最近时间** → 低置信度 (待实现)
+
+---
+
+## 5. 测试状态
+
+### 5.1 当前测试覆盖
+
+```bash
+# 运行测试
+python3 -B -m pytest -q
+
+# 当前结果: 18 passed
+```
+
+| 测试文件 | 覆盖场景 |
+|----------|----------|
+| `test_extract_records.py` | 01/02/03 样本，limit 参数 |
+| `test_extract_events.py` | 01/02/03 事件识别 |
+| `test_extract_sessions.py` | 01 单 UE, 09 多 UE |
+| `test_extract_sbi.py` | 02 SBI 配对，08 SBI 归属 |
+| `test_extract_pdu.py` | 02 PDU 建链, 13 Release, 07 PFCP failure |
+
+### 5.2 预期诊断基线
+
+`tests/fixtures/expected_diagnosis.json` 定义了 15 个场景的期望诊断结果：
+- 01: registration_success → OK
+- 02: registration_and_pdu_session_success → OK
+- 03: registration_reject → FAIL (UE_IDENTITY_CANNOT_BE_DERIVED)
+- 04: authentication_failure → FAIL (AKA_MAC_MISMATCH)
+- 07: pfcp_failure → FAIL (UPF_UNAVAILABLE)
+- 08: sbi_failure → FAIL (UDM_UNAVAILABLE)
+- 等等...
+
+---
+
+## 6. 待办事项（下一步）
+
+### 6.1 高优先级
+
+1. **诊断信号层**
+   - 实现 `PFCP_ASSOCIATION_RETRY` 信号识别
+   - 实现 `T3580_RETRY` 检测（PDU 建立重试）
+   - 实现 `SBI_5XX` 错误码识别
+
+2. **expected_diagnosis 对接**
+   - 写 pytest 用例：实际诊断 vs expected_diagnosis.json
+   - 实现置信度评估
+
+3. **PFCP 精细关联**
+   - SEID 级配对
+   - msg_type 语义命名 (Session Establishment/Modification/Deletion)
+
+### 6.2 中优先级
+
+4. **HTTP2 Body 解析** (P2)
+   - nausf-auth/npcf-* 等 body 中的 SUPI 提取
+   - JSON 解析依赖
+
+5. **多 UE 复杂场景**
+   - 并发 PDU Session 归属优化
+   - SMF IP 冲突处理
+
+6. **CLI 增强**
+   - 输出格式选项 (table/tree)
+   - 诊断报告生成
+
+### 6.3 技术债务
+
+- 部分 tshark 字段可能不可用（warnings 已标记）
+- 时间窗口参数目前硬编码，可配置化
+- 需要更多异常场景测试
+
+---
+
+## 7. 环境依赖
+
+```bash
+# 系统依赖
+tshark >= 4.0
+capinfos >= 4.0
+
+# Python 依赖 (pyproject.toml)
+python >= 3.11
+pydantic >= 2.8
+pytest >= 8  (dev)
+
+# 安装
+pip install -e ".[dev]"
+```
+
+---
+
+## 8. 快速开始
+
+```bash
+# 1. 检查 pcap
+python3 -B -m traceweaver inspect-pcap tests/fixtures/pcap/01_registration_success.pcapng
+
+# 2. 提取 UE Session（含 SBI + PDU）
+python3 -B -m traceweaver extract-sessions tests/fixtures/pcap/02_registration_and_pdu_session_success.pcapng --compact
+
+# 3. 提取 PDU Session
+python3 -B -m traceweaver extract-pdu-sessions tests/fixtures/pcap/13_pdu_session_release.pcapng --compact
+
+# 4. 运行测试
+python3 -B -m pytest -q
+```
+
+---
+
+## 9. 重要文件速查
+
+| 需求 | 查看文件 |
+|------|----------|
+| 了解设计思路 | `plan/cross-protocol-correlation.md` |
+| 事件映射表 | `traceweaver/events/identify.py` |
+| 模型定义 | `traceweaver/models/*.py` |
+| 关联算法 | `traceweaver/correlate/*.py` |
+| CLI 入口 | `traceweaver/cli.py` |
+| 测试样本 | `tests/fixtures/pcap/` |
+| 预期诊断 | `tests/fixtures/expected_diagnosis.json` |
+
+---
+
+## 10. 已知问题
+
+1. **06_security_mode_reject** 样本尚未采集（计划内）
+2. 部分样本需强制 decode-as: `tcp.port==7777,http2`
+3. 受保护 5GSM 帧的归属是保守策略，可能漏判（已注释说明）
+
+---
+
+**文档结束**  
+交接人签名: AI Assistant  
+接收人: 后续开发者

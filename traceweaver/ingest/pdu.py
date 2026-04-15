@@ -23,19 +23,20 @@ def extract_pdu_sessions(
         decode_as=decode_as,
         limit=limit,
     )
-    sessions = group_ue_sessions(records)
-    correlate_sbi_to_sessions(pair_sbi_calls(records), sessions)
+    warnings = list(records.warnings)
+    sessions = group_ue_sessions(records, warnings=warnings)
+    correlate_sbi_to_sessions(pair_sbi_calls(records), sessions, warnings=warnings)
 
     pdu_sessions = []
     for session in sessions:
         flows = build_pdu_sessions_for_ue(session)
-        correlate_pfcp_to_pdu(records, flows)
+        correlate_pfcp_to_pdu(records, flows, warnings=warnings)
         pdu_sessions.extend(flows)
 
     return PDUSessionSet(
         path=records.path,
         file_name=records.file_name,
         pdu_session_count=len(pdu_sessions),
-        warnings=list(records.warnings),
+        warnings=warnings,
         pdu_sessions=pdu_sessions,
     )

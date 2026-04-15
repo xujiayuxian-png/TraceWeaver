@@ -7,10 +7,11 @@ from traceweaver.tshark.tools import (
     list_tshark_fields,
     read_capinfos_table,
 )
-from traceweaver.tshark.extract import extract_5gc_records
+from traceweaver.tshark.extract import clear_field_map_cache, extract_5gc_records
 
 __all__ = [
     "ExternalToolError",
+    "clear_field_map_cache",
     "extract_5gc_records",
     "get_capinfos_version",
     "get_tshark_version",

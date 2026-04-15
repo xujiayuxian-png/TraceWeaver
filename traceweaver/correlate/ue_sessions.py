@@ -20,7 +20,11 @@ def _session_id(ran_ue_ngap_id: str | None, amf_ue_ngap_id: str | None) -> str:
     return "__".join(parts) if parts else "unknown"
 
 
-def group_ue_sessions(record_set: ExtractedRecordSet) -> list[UESession]:
+def group_ue_sessions(
+    record_set: ExtractedRecordSet,
+    *,
+    warnings: list[str] | None = None,
+) -> list[UESession]:
     sessions: dict[tuple[str | None, str | None], UESession] = {}
     ran_index: dict[str, tuple[str | None, str | None]] = {}
     amf_index: dict[str, tuple[str | None, str | None]] = {}
@@ -60,6 +64,9 @@ def group_ue_sessions(record_set: ExtractedRecordSet) -> list[UESession]:
             session.events.extend(events)
             session.event_count += len(events)
 
+    orphan_attached = 0
+    orphan_dropped = 0
+
     for record in record_set.records:
         if record.primary_protocol not in {"ngap", "nas_5gs"}:
             continue
@@ -77,8 +84,14 @@ def group_ue_sessions(record_set: ExtractedRecordSet) -> list[UESession]:
                 ]
                 if len(candidates) == 1:
                     append_record(candidates[0], record)
+                    orphan_attached += 1
                 elif len(candidates) == 0 and len(sessions) == 1:
                     append_record(next(iter(sessions.values())), record)
+                    orphan_attached += 1
+                else:
+                    orphan_dropped += 1
+            else:
+                orphan_dropped += 1
             continue
 
         key: tuple[str | None, str | None]
@@ -87,11 +100,14 @@ def group_ue_sessions(record_set: ExtractedRecordSet) -> list[UESession]:
             if key not in sessions:
                 prior_key = ran_index.get(ran_ue_ngap_id) or amf_index.get(amf_ue_ngap_id)
                 if prior_key and prior_key != key:
-                    session = remove_key(prior_key)
-                    session.ran_ue_ngap_id = ran_ue_ngap_id
-                    session.amf_ue_ngap_id = amf_ue_ngap_id
-                    session.session_id = _session_id(ran_ue_ngap_id, amf_ue_ngap_id)
-                    register_key(key, session)
+                    prior_ran, prior_amf = prior_key
+                    is_upgrade = (prior_ran is None or prior_amf is None)
+                    if is_upgrade:
+                        session = remove_key(prior_key)
+                        session.ran_ue_ngap_id = ran_ue_ngap_id
+                        session.amf_ue_ngap_id = amf_ue_ngap_id
+                        session.session_id = _session_id(ran_ue_ngap_id, amf_ue_ngap_id)
+                        register_key(key, session)
         elif ran_ue_ngap_id:
             key = ran_index.get(ran_ue_ngap_id, (ran_ue_ngap_id, None))
         else:
@@ -108,6 +124,16 @@ def group_ue_sessions(record_set: ExtractedRecordSet) -> list[UESession]:
             )
 
         append_record(sessions[key], record)
+
+    if warnings is not None:
+        if orphan_dropped > 0:
+            warnings.append(
+                f"ue_session_grouping: {orphan_dropped} NAS frame(s) without UE NGAP ID could not be attached to any session"
+            )
+        if orphan_attached > 0:
+            warnings.append(
+                f"ue_session_grouping: {orphan_attached} NAS frame(s) without UE NGAP ID attached via time window heuristic"
+            )
 
     return sorted(
         sessions.values(),

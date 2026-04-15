@@ -10,5 +10,7 @@
 			"path": "../mcp"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"remote.autoForwardPortsFallback": 0
+	}
 }

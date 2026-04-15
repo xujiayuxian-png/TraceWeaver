@@ -21,7 +21,7 @@ class UESession(BaseModel):
     sbi_call_count: int = 0
     pdu_session_count: int = 0
     frame_numbers: list[int] = Field(default_factory=list)
-    records: list[NormalizedRecord] = Field(default_factory=list)
+    records: list[NormalizedRecord] = Field(default_factory=list, exclude=True)
     events: list[DetectedEvent] = Field(default_factory=list)
     sbi_calls: list[SBICall] = Field(default_factory=list)
     pdu_sessions: list[PDUSessionFlow] = Field(default_factory=list)

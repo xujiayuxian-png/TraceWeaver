@@ -3,19 +3,10 @@ from __future__ import annotations
 import re
 
 from traceweaver.models import ExtractedRecordSet, PDUSessionFlow, PFCPFlow, SBICall, UESession
+from traceweaver.utils import parse_optional_int
 
 PDU_SBI_WINDOW_SECONDS = 2.0
 PFCP_WINDOW_SECONDS = 5.0
-
-
-def _parse_optional_int(value: str | None) -> int | None:
-    raw = (value or "").strip()
-    if not raw:
-        return None
-    try:
-        return int(raw, 0)
-    except ValueError:
-        return None
 
 
 def extract_pdu_session_id_from_sbi_path(path: str | None) -> str | None:
@@ -52,10 +43,6 @@ def build_pdu_sessions_for_ue(session: UESession) -> list[PDUSessionFlow]:
             flow.start_time_epoch = event.time_epoch
         if flow.end_time_epoch is None or event.time_epoch > flow.end_time_epoch:
             flow.end_time_epoch = event.time_epoch
-
-    smf_ips = infer_smf_ips(session)
-    for flow in grouped.values():
-        flow.smf_ips = sorted(smf_ips)
 
     for call in session.sbi_calls:
         if call.service != "nsmf-pdusession":
@@ -97,10 +84,20 @@ def build_pdu_sessions_for_ue(session: UESession) -> list[PDUSessionFlow]:
         if call.response_time_epoch is not None and (target.end_time_epoch is None or call.response_time_epoch > target.end_time_epoch):
             target.end_time_epoch = call.response_time_epoch
 
+    if len(grouped) == 1:
+        sole_flow = next(iter(grouped.values()))
+        if not sole_flow.smf_ips:
+            sole_flow.smf_ips = sorted(infer_smf_ips(session))
+
     return sorted(grouped.values(), key=lambda flow: (flow.start_time_epoch or float("inf"), flow.pdu_session_id))
 
 
-def correlate_pfcp_to_pdu(record_set: ExtractedRecordSet, pdu_sessions: list[PDUSessionFlow]) -> list[PDUSessionFlow]:
+def correlate_pfcp_to_pdu(
+    record_set: ExtractedRecordSet,
+    pdu_sessions: list[PDUSessionFlow],
+    *,
+    warnings: list[str] | None = None,
+) -> list[PDUSessionFlow]:
     if not pdu_sessions:
         return pdu_sessions
 
@@ -108,13 +105,20 @@ def correlate_pfcp_to_pdu(record_set: ExtractedRecordSet, pdu_sessions: list[PDU
     for flow in pdu_sessions:
         smf_ips.update(flow.smf_ips)
 
+    pfcp_total = 0
+    pfcp_matched = 0
+    pfcp_dropped_ip = 0
+    pfcp_dropped_time = 0
+
     for record in record_set.records:
-        msg_type = _parse_optional_int(record.fields.get("pfcp.msg_type"))
+        msg_type = parse_optional_int(record.fields.get("pfcp.msg_type"))
         if msg_type is None:
             continue
+        pfcp_total += 1
         src_ip = record.src_ip
         dst_ip = record.dst_ip
         if smf_ips and src_ip not in smf_ips and dst_ip not in smf_ips:
+            pfcp_dropped_ip += 1
             continue
 
         pfcp_flow = PFCPFlow(
@@ -123,7 +127,7 @@ def correlate_pfcp_to_pdu(record_set: ExtractedRecordSet, pdu_sessions: list[PDU
             msg_type=msg_type,
             seid=(record.fields.get("pfcp.seid") or None),
             f_seid_ipv4=(record.fields.get("pfcp.f_seid.ipv4") or None),
-            cause=_parse_optional_int(record.fields.get("pfcp.cause")),
+            cause=parse_optional_int(record.fields.get("pfcp.cause")),
             src_ip=src_ip,
             dst_ip=dst_ip,
         )
@@ -137,6 +141,7 @@ def correlate_pfcp_to_pdu(record_set: ExtractedRecordSet, pdu_sessions: list[PDU
         if not candidates and len(pdu_sessions) == 1:
             candidates = [pdu_sessions[0]]
         if not candidates:
+            pfcp_dropped_time += 1
             continue
 
         if len(candidates) == 1:
@@ -148,7 +153,14 @@ def correlate_pfcp_to_pdu(record_set: ExtractedRecordSet, pdu_sessions: list[PDU
 
         target.pfcp_flows.append(pfcp_flow)
         target.pfcp_flow_count += 1
+        pfcp_matched += 1
         if target.end_time_epoch is None or record.time_epoch > target.end_time_epoch:
             target.end_time_epoch = record.time_epoch
+
+    if warnings is not None and pfcp_total > 0:
+        warnings.append(
+            f"pfcp_correlation_summary: total={pfcp_total} matched={pfcp_matched} "
+            f"dropped_ip_mismatch={pfcp_dropped_ip} dropped_time_window={pfcp_dropped_time}"
+        )
 
     return pdu_sessions

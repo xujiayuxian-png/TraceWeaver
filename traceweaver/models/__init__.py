@@ -1,4 +1,5 @@
 from traceweaver.models.capture import CaptureInspection, ProtocolPresence, ToolingInfo
+from traceweaver.models.diagnosis import DiagnosisReport, DiagnosticSignal, SessionDiagnosis
 from traceweaver.models.events import DetectedEvent, DetectedEventSet
 from traceweaver.models.pdu import PDUSessionFlow, PDUSessionSet, PFCPFlow
 from traceweaver.models.records import ExtractedRecordSet, NormalizedRecord
@@ -9,6 +10,8 @@ __all__ = [
     "CaptureInspection",
     "DetectedEvent",
     "DetectedEventSet",
+    "DiagnosisReport",
+    "DiagnosticSignal",
     "PDUSessionFlow",
     "PDUSessionSet",
     "PFCPFlow",
@@ -17,6 +20,7 @@ __all__ = [
     "ProtocolPresence",
     "SBICall",
     "SBICallSet",
+    "SessionDiagnosis",
     "ToolingInfo",
     "UESession",
     "UESessionSet",

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
+from traceweaver.diagnosis import run_diagnosis
 from traceweaver.ingest import extract_5gc_events, extract_pdu_sessions, extract_5gc_records, extract_sbi_calls, extract_ue_sessions, inspect_capture
 from traceweaver.tshark import ExternalToolError
 
@@ -53,11 +55,36 @@ def main() -> None:
     pdu_format_group.add_argument("--pretty", action="store_true")
     pdu_format_group.add_argument("--compact", action="store_true")
 
+    diag_parser = subparsers.add_parser("diagnose")
+    diag_parser.add_argument("pcap_path", type=Path)
+    diag_parser.add_argument("--limit", type=int)
+    diag_parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="LLM model for diagnosis (e.g. ollama/qwen2.5:14b, gpt-4o, openai/gpt-4.1-mini). "
+             "Omit to use the rule engine.",
+    )
+    diag_parser.add_argument("--api-base", type=str, default=None, help="API base URL (e.g. http://localhost:11434)")
+    diag_parser.add_argument("--api-key", type=str, default=None, help="API key for OpenAI-compatible providers")
+    diag_parser.add_argument("--temperature", type=float, default=0.1)
+    diag_parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    diag_format_group = diag_parser.add_mutually_exclusive_group()
+    diag_format_group.add_argument("--pretty", action="store_true")
+    diag_format_group.add_argument("--compact", action="store_true")
+
     args = parser.parse_args()
 
-    if args.command not in {"inspect-pcap", "extract-records", "extract-events", "extract-sessions", "extract-sbi", "extract-pdu-sessions"}:
+    valid_commands = {
+        "inspect-pcap", "extract-records", "extract-events",
+        "extract-sessions", "extract-sbi", "extract-pdu-sessions", "diagnose",
+    }
+    if args.command not in valid_commands:
         parser.print_help()
         raise SystemExit(1)
+
+    if getattr(args, "verbose", False):
+        logging.basicConfig(level=logging.DEBUG, format="%(name)s %(levelname)s: %(message)s", stream=sys.stderr)
 
     try:
         if args.command == "inspect-pcap":
@@ -70,11 +97,23 @@ def main() -> None:
             payload = extract_sbi_calls(args.pcap_path, limit=args.limit)
         elif args.command == "extract-pdu-sessions":
             payload = extract_pdu_sessions(args.pcap_path, limit=args.limit)
+        elif args.command == "diagnose":
+            llm_provider = None
+            if args.model:
+                from traceweaver.llm import LLMConfig, LLMProvider
+                config = LLMConfig(
+                    model=args.model,
+                    api_base=args.api_base,
+                    api_key=args.api_key,
+                    temperature=args.temperature,
+                )
+                llm_provider = LLMProvider(config)
+            payload = run_diagnosis(args.pcap_path, limit=args.limit, llm_provider=llm_provider)
         else:
             payload = extract_ue_sessions(args.pcap_path, limit=args.limit)
     except (ExternalToolError, FileNotFoundError, IsADirectoryError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from exc
 
-    indent = None if args.compact else 2
+    indent = None if getattr(args, "compact", False) else 2
     print(payload.model_dump_json(indent=indent))

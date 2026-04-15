@@ -38,6 +38,15 @@ NAS_SM_EVENT_MAP = {
     214: "5GSM_STATUS",
 }
 
+NGAP_PROCEDURE_EVENT_MAP = {
+    14: "NGAP_INITIAL_CONTEXT_SETUP",
+    29: "NGAP_PDU_SESSION_RESOURCE_SETUP",
+    30: "NGAP_PDU_SESSION_RESOURCE_RELEASE",
+    41: "NGAP_UE_CONTEXT_RELEASE",
+    46: "NGAP_DOWNLINK_NAS_TRANSPORT",
+    47: "NGAP_UPLINK_NAS_TRANSPORT",
+}
+
 
 def _parse_int(raw_value: str) -> int | None:
     value = (raw_value or "").strip()
@@ -89,6 +98,25 @@ def detect_events_for_record(record: NormalizedRecord) -> list[DetectedEvent]:
                 fields=record.fields,
             )
         )
+
+    if record.primary_protocol == "ngap" and not events:
+        proc_code = _parse_int(record.fields.get("ngap.procedureCode", ""))
+        if proc_code in NGAP_PROCEDURE_EVENT_MAP:
+            events.append(
+                DetectedEvent(
+                    frame_number=record.frame_number,
+                    time_epoch=record.time_epoch,
+                    protocol="ngap",
+                    event_name=NGAP_PROCEDURE_EVENT_MAP[proc_code],
+                    message_type=proc_code,
+                    ran_ue_ngap_id=record.fields.get("ngap.RAN_UE_NGAP_ID") or None,
+                    amf_ue_ngap_id=record.fields.get("ngap.AMF_UE_NGAP_ID") or None,
+                    pdu_session_id=record.fields.get("ngap.pDUSessionID") or None,
+                    src_ip=record.src_ip,
+                    dst_ip=record.dst_ip,
+                    fields=record.fields,
+                )
+            )
 
     return events
 

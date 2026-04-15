@@ -1,9 +1,9 @@
 # TraceWeaver 项目交接文档
 
 **交接日期**: 2026-04-15  
-**项目版本**: v0.1.0  
+**项目版本**: v0.3.0  
 **交接人**: AI Assistant  
-**状态**: ✅ Phase 1 完成，核心链路已打通
+**状态**: ✅ Phase 1 + Phase 2 (规则引擎) + Phase 3 (LLM 诊断引擎) 完成
 
 ---
 
@@ -16,12 +16,13 @@ TraceWeaver 是一个 5GC/Open5GS 网络包分析工具，通过解析 pcap 文�
 - **会话关联**: UE 会话分组 → PDU 会话组装 → PFCP 流关联
 - **事件识别**: 5GMM/5GSM 消息类型映射为结构化事件
 - **跨协议关联**: SBI 调用关联 UE，PFCP 关联 PDU Session
+- **LLM 智能诊断**: 通过 litellm 统一接口支持 Ollama / OpenAI，3 级 prompt 策略（large/medium/small），规则引擎自动 fallback
 
 ---
 
 ## 2. 已完成的功能（Phase 1）
 
-### 2.1 CLI 命令（6个）
+### 2.1 CLI 命令（7个）
 
 | 命令 | 功能 | 示例 |
 |------|------|------|
@@ -31,6 +32,8 @@ TraceWeaver 是一个 5GC/Open5GS 网络包分析工具，通过解析 pcap 文�
 | `extract-sessions` | UE Session 分组 | `traceweaver extract-sessions file.pcapng --compact` |
 | `extract-sbi` | HTTP2 SBI 调用提取 | `traceweaver extract-sbi file.pcapng --compact` |
 | `extract-pdu-sessions` | PDU Session 组装 | `traceweaver extract-pdu-sessions file.pcapng` |
+| `diagnose` | **端到端诊断** | `traceweaver diagnose file.pcapng --compact` |
+| `diagnose --model` | **LLM 诊断** | `traceweaver diagnose file.pcapng --model ollama/qwen2.5:14b` |
 
 ### 2.2 核心数据流
 
@@ -96,6 +99,12 @@ traceweaver/
 │   ├── ue_sessions.py     # group_ue_sessions
 │   ├── sbi.py             # pair_sbi_calls, correlate_sbi_to_sessions
 │   └── pdu.py             # build_pdu_sessions_for_ue, correlate_pfcp_to_pdu
+├── llm/                   # LLM 诊断层
+│   ├── __init__.py
+│   ├── provider.py        # LLMConfig, LLMProvider (litellm 统一接口)
+│   ├── prompts.py         # 3 级 prompt 策略, timeline/signal 格式化
+│   └── output.py          # LLMDiagnosisOutput 校验, JSON 提取
+├── utils.py               # 公共工具 (parse_optional_int/float)
 └── tshark/                # tshark 交互层
     ├── __init__.py
     ├── tools.py           # get_tshark_version, list_tshark_fields
@@ -171,7 +180,7 @@ SINGLE_VALUE_FIELDS = { "ngap.RAN_UE_NGAP_ID", "nas_5gs.mm.message_type", ... }
 # 运行测试
 python3 -B -m pytest -q
 
-# 当前结果: 18 passed
+# 当前结果: 99 passed, 42 skipped
 ```
 
 | 测试文件 | 覆盖场景 |
@@ -181,6 +190,9 @@ python3 -B -m pytest -q
 | `test_extract_sessions.py` | 01 单 UE, 09 多 UE |
 | `test_extract_sbi.py` | 02 SBI 配对，08 SBI 归属 |
 | `test_extract_pdu.py` | 02 PDU 建链, 13 Release, 07 PFCP failure |
+| `test_correlate_sbi.py` | SBI 配对数值解析，关联 warning 发射 |
+| `test_diagnosis.py` | 13 场景端到端诊断 verdict/signal/SBI 路径验证 |
+| `test_llm.py` | LLM 提供商抽象、prompt 构建、输出验证、fallback 逻辑 |
 
 ### 5.2 预期诊断基线
 
@@ -195,42 +207,66 @@ python3 -B -m pytest -q
 
 ---
 
-## 6. 待办事项（下一步）
+## 6. LLM 诊断架构
 
-### 6.1 高优先级
+### 6.1 架构概览
 
-1. **诊断信号层**
-   - 实现 `PFCP_ASSOCIATION_RETRY` 信号识别
-   - 实现 `T3580_RETRY` 检测（PDU 建立重试）
-   - 实现 `SBI_5XX` 错误码识别
+```
+pcap → 结构化提取 → 信号标注 → LLM 诊断 → 结果校验
+                                  ↓ (失败)
+                            规则引擎 fallback
+```
 
-2. **expected_diagnosis 对接**
-   - 写 pytest 用例：实际诊断 vs expected_diagnosis.json
-   - 实现置信度评估
+### 6.2 Provider 层 (litellm)
 
-3. **PFCP 精细关联**
-   - SEID 级配对
-   - msg_type 语义命名 (Session Establishment/Modification/Deletion)
+通过 litellm 统一 Ollama 和 OpenAI API：
 
-### 6.2 中优先级
+```bash
+# Ollama (本地)
+traceweaver diagnose file.pcapng --model ollama/qwen2.5:14b
 
-4. **HTTP2 Body 解析** (P2)
-   - nausf-auth/npcf-* 等 body 中的 SUPI 提取
-   - JSON 解析依赖
+# OpenAI
+traceweaver diagnose file.pcapng --model gpt-4o --api-key sk-xxx
 
-5. **多 UE 复杂场景**
-   - 并发 PDU Session 归属优化
-   - SMF IP 冲突处理
+# 自定义 endpoint
+traceweaver diagnose file.pcapng --model openai/qwen-plus --api-base http://xxx --api-key xxx
+```
 
-6. **CLI 增强**
-   - 输出格式选项 (table/tree)
-   - 诊断报告生成
+### 6.3 三级 Prompt 策略
 
-### 6.3 技术债务
+| 模型层级 | 代表模型 | Prompt 策略 |
+|----------|----------|------------|
+| large | gpt-4o, qwen2.5:72b | 开放式分析，minimal hints |
+| medium | qwen2.5:14b, gpt-4o-mini | 分步引导 (5 步分析) |
+| small | qwen2.5:7b, llama3.1:8b | CoT 模板 + 信号 hints |
 
-- 部分 tshark 字段可能不可用（warnings 已标记）
-- 时间窗口参数目前硬编码，可配置化
-- 需要更多异常场景测试
+### 6.4 输出校验与 Fallback
+
+1. LLM 返回 JSON → Pydantic `LLMDiagnosisOutput` 校验 (verdict/confidence 枚举)
+2. JSON 解析失败 → 自动从 markdown code block / 文本中提取
+3. 校验失败 → 重试 (max_retries)
+4. 全部失败 → 规则引擎 fallback (notes 标注 `llm_fallback`)
+
+---
+
+## 7. 待办事项（下一步）
+
+### 7.1 高优先级
+
+1. **RAG 增强**: 3GPP spec 知识库接入
+2. **LLM 评测**: 用 expected_diagnosis.json 做 LLM vs 规则引擎对比评测
+
+### 7.2 中优先级
+
+3. **HTTP2 Body 解析**: nausf-auth/npcf-* body 中的 SUPI 提取
+4. **PFCP SEID 配对**: 精细 SEID 级 request/response 配对
+5. **CLI 增强**: 输出格式 (table/tree)、诊断报告生成
+
+### 7.3 技术债务
+
+- 时间窗口参数硬编码，可配置化
+- `correlate_sbi_to_sessions` 隐式副作用 (ISSUES #5)
+- CLI `--limit` 语义对用户有误导 (ISSUES #8)
 
 ---
 
@@ -244,6 +280,7 @@ capinfos >= 4.0
 # Python 依赖 (pyproject.toml)
 python >= 3.11
 pydantic >= 2.8
+litellm >= 1.40
 pytest >= 8  (dev)
 
 # 安装

@@ -22,16 +22,17 @@ def extract_ue_sessions(
         decode_as=decode_as,
         limit=limit,
     )
-    sessions = group_ue_sessions(records)
-    correlate_sbi_to_sessions(pair_sbi_calls(records), sessions)
+    warnings = list(records.warnings)
+    sessions = group_ue_sessions(records, warnings=warnings)
+    correlate_sbi_to_sessions(pair_sbi_calls(records), sessions, warnings=warnings)
     for session in sessions:
         session.pdu_sessions = build_pdu_sessions_for_ue(session)
-        correlate_pfcp_to_pdu(records, session.pdu_sessions)
+        correlate_pfcp_to_pdu(records, session.pdu_sessions, warnings=warnings)
         session.pdu_session_count = len(session.pdu_sessions)
     return UESessionSet(
         path=records.path,
         file_name=records.file_name,
         session_count=len(sessions),
-        warnings=list(records.warnings),
+        warnings=warnings,
         sessions=sessions,
     )

@@ -6,13 +6,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from traceweaver.diagnosis.run import run_diagnosis
+from traceweaver import analyze_capture
 from traceweaver.llm.output import LLMDiagnosisOutput, parse_llm_diagnosis
 from traceweaver.llm.prompts import build_diagnosis_prompt, format_signals, format_timeline
 from traceweaver.llm.provider import LLMConfig, LLMProvider, _extract_json, _should_disable_thinking, infer_model_tier
 from traceweaver.models import DiagnosticSignal, UESession
 
 FIXTURES = Path(__file__).parent / "fixtures" / "pcap"
+
+
+def _analyze_capture(pcap_path: str | Path, *, llm_provider=None):
+    return analyze_capture(str(pcap_path), profile="open5gs_5gc", llm_provider=llm_provider)
 
 
 class TestModelTierInference:
@@ -214,12 +218,9 @@ class TestLLMDiagnosisIntegration:
         mock_provider.config = LLMConfig(model="test/model", max_retries=1)
         mock_provider.complete_json.side_effect = Exception("connection refused")
 
-        report = run_diagnosis(
-            str(FIXTURES / "01_registration_success.pcapng"),
-            llm_provider=mock_provider,
-        )
+        report = _analyze_capture(FIXTURES / "01_registration_success.pcapng", llm_provider=mock_provider)
         assert report.overall_verdict == "OK"
-        assert any("llm_fallback" in n for sess in report.sessions for n in sess.notes)
+        assert any("llm_fallback" in n for sess in report.diagnoses for n in sess.notes)
 
     def test_llm_success_with_mock(self) -> None:
         """When LLM returns valid JSON, should use its verdict."""
@@ -236,12 +237,9 @@ class TestLLMDiagnosisIntegration:
             "reasoning": "registration succeeded via NGAP InitialContextSetup",
         }
 
-        report = run_diagnosis(
-            str(FIXTURES / "01_registration_success.pcapng"),
-            llm_provider=mock_provider,
-        )
+        report = _analyze_capture(FIXTURES / "01_registration_success.pcapng", llm_provider=mock_provider)
         assert report.overall_verdict == "OK"
-        assert any("diagnosed_by: llm" in n for sess in report.sessions for n in sess.notes)
+        assert any("diagnosed_by: llm" in n for sess in report.diagnoses for n in sess.notes)
         assert mock_provider.complete_json.called
 
     def test_llm_invalid_verdict_triggers_retry(self) -> None:
@@ -253,15 +251,12 @@ class TestLLMDiagnosisIntegration:
             "confidence": "high",
         }
 
-        report = run_diagnosis(
-            str(FIXTURES / "01_registration_success.pcapng"),
-            llm_provider=mock_provider,
-        )
+        report = _analyze_capture(FIXTURES / "01_registration_success.pcapng", llm_provider=mock_provider)
         assert report.overall_verdict == "OK"
-        assert any("llm_fallback" in n for sess in report.sessions for n in sess.notes)
+        assert any("llm_fallback" in n for sess in report.diagnoses for n in sess.notes)
 
     def test_rule_engine_when_no_provider(self) -> None:
         """No --model means rule engine, no LLM calls."""
-        report = run_diagnosis(str(FIXTURES / "01_registration_success.pcapng"))
+        report = _analyze_capture(FIXTURES / "01_registration_success.pcapng")
         assert report.overall_verdict == "OK"
         assert any("diagnosis_engine: rule" in w for w in report.warnings)

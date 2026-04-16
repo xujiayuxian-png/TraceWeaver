@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import logging
 
-from traceweaver.diagnosis.engine import diagnose_session as rule_diagnose_session
 from traceweaver.llm.output import LLMDiagnosisOutput, parse_llm_diagnosis
 from traceweaver.llm.prompts import build_diagnosis_prompt
 from traceweaver.llm.provider import LLMProvider
 from traceweaver.models import DiagnosticSignal, SessionDiagnosis, UESession
+from traceweaver.profiles.open5gs_5gc.diagnosis.engine import diagnose_session as rule_diagnose_session
 
 logger = logging.getLogger(__name__)
 

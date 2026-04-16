@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from traceweaver.models import ExtractedRecordSet, PDUSessionFlow, PFCPFlow, SBICall, UESession
+from traceweaver.models import ExtractedRecordSet, PDUSessionFlow, PFCPFlow, UESession
 from traceweaver.utils import parse_optional_int
 
 PDU_SBI_WINDOW_SECONDS = 2.0
@@ -159,8 +159,7 @@ def correlate_pfcp_to_pdu(
 
     if warnings is not None and pfcp_total > 0:
         warnings.append(
-            f"pfcp_correlation_summary: total={pfcp_total} matched={pfcp_matched} "
-            f"dropped_ip_mismatch={pfcp_dropped_ip} dropped_time_window={pfcp_dropped_time}"
+            f"pfcp_correlation_summary: total={pfcp_total} matched={pfcp_matched} dropped_ip_mismatch={pfcp_dropped_ip} dropped_time_window={pfcp_dropped_time}"
         )
 
     return pdu_sessions

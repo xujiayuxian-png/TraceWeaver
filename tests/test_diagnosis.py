@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from traceweaver.diagnosis import run_diagnosis
-from traceweaver.diagnosis.signals import collect_signals
-from traceweaver.diagnosis.engine import diagnose_session
+from traceweaver import analyze_capture
 from traceweaver.models import DiagnosticSignal, UESession
+from traceweaver.profiles.open5gs_5gc.diagnosis.engine import diagnose_session
+from traceweaver.profiles.open5gs_5gc.diagnosis.signals import collect_signals
 
 FIXTURES = Path(__file__).parent / "fixtures" / "pcap"
 EXPECTED_PATH = Path(__file__).parent / "fixtures" / "expected_diagnosis.json"
@@ -29,6 +29,10 @@ CANONICAL_SCENARIOS = [
 ]
 
 
+def _analyze_capture(pcap_path: str | Path, *, llm_provider=None):
+    return analyze_capture(str(pcap_path), profile="open5gs_5gc", llm_provider=llm_provider)
+
+
 @pytest.fixture(params=CANONICAL_SCENARIOS)
 def scenario(request) -> tuple[str, dict]:
     sid = request.param
@@ -39,7 +43,7 @@ class TestDiagnosisVerdict:
     def test_verdict_matches_expected(self, scenario: tuple[str, dict]) -> None:
         sid, spec = scenario
         pcap = FIXTURES / spec["pcap_file"]
-        report = run_diagnosis(str(pcap))
+        report = _analyze_capture(pcap)
 
         expected_verdict = spec["expected"]["verdict"]
 
@@ -61,7 +65,7 @@ class TestDiagnosisVerdict:
             pytest.skip("only checking failure_point for FAIL/FAIL_THEN_OK verdicts")
 
         pcap = FIXTURES / spec["pcap_file"]
-        report = run_diagnosis(str(pcap))
+        report = _analyze_capture(pcap)
 
         if report.overall_verdict in ("FAIL", "FAIL_THEN_OK"):
             assert report.overall_failure_point is not None, (
@@ -76,7 +80,7 @@ class TestDiagnosisVerdict:
             pytest.skip("only checking root_cause for FAIL/FAIL_THEN_OK verdicts")
 
         pcap = FIXTURES / spec["pcap_file"]
-        report = run_diagnosis(str(pcap))
+        report = _analyze_capture(pcap)
 
         if report.overall_verdict in ("FAIL", "FAIL_THEN_OK"):
             assert report.overall_root_cause is not None, (
@@ -103,10 +107,10 @@ class TestDiagnosisSignals:
             pytest.skip("all required_signals are abstract/not directly detectable")
 
         pcap = FIXTURES / spec["pcap_file"]
-        report = run_diagnosis(str(pcap))
+        report = _analyze_capture(pcap)
 
         all_signal_names: set[str] = set()
-        for sess in report.sessions:
+        for sess in report.diagnoses:
             all_signal_names.update(sess.signal_names)
 
         mapped = {
@@ -142,10 +146,10 @@ class TestDiagnosisSignals:
             pytest.skip("no forbidden_signals defined")
 
         pcap = FIXTURES / spec["pcap_file"]
-        report = run_diagnosis(str(pcap))
+        report = _analyze_capture(pcap)
 
         all_signal_names: set[str] = set()
-        for sess in report.sessions:
+        for sess in report.diagnoses:
             all_signal_names.update(sess.signal_names)
 
         violations = forbidden & all_signal_names
@@ -162,10 +166,10 @@ class TestDiagnosisSBIPaths:
             pytest.skip("no required_sbi_paths defined")
 
         pcap = FIXTURES / spec["pcap_file"]
-        report = run_diagnosis(str(pcap))
+        report = _analyze_capture(pcap)
 
         all_paths: set[str] = set()
-        for sess in report.sessions:
+        for sess in report.diagnoses:
             all_paths.update(sess.sbi_paths)
 
         for expected_path in required_paths:
@@ -178,49 +182,49 @@ class TestDiagnosisSBIPaths:
 
 class TestSpecificScenarios:
     def test_01_registration_success(self) -> None:
-        report = run_diagnosis(str(FIXTURES / "01_registration_success.pcapng"))
+        report = _analyze_capture(FIXTURES / "01_registration_success.pcapng")
         assert report.overall_verdict == "OK"
-        assert report.session_count >= 1
+        assert report.scope_count >= 1
 
     def test_02_registration_and_pdu_success(self) -> None:
-        report = run_diagnosis(str(FIXTURES / "02_registration_and_pdu_session_success.pcapng"))
+        report = _analyze_capture(FIXTURES / "02_registration_and_pdu_session_success.pcapng")
         assert report.overall_verdict == "OK"
 
     def test_03_registration_reject(self) -> None:
-        report = run_diagnosis(str(FIXTURES / "03_registration_reject.pcapng"))
+        report = _analyze_capture(FIXTURES / "03_registration_reject.pcapng")
         assert report.overall_verdict == "FAIL"
         assert report.overall_failure_point == "REGISTRATION"
 
     def test_04_authentication_failure(self) -> None:
-        report = run_diagnosis(str(FIXTURES / "04_authentication_failure.pcapng"))
+        report = _analyze_capture(FIXTURES / "04_authentication_failure.pcapng")
         assert report.overall_verdict == "FAIL"
         assert report.overall_failure_point == "AUTHENTICATION"
 
     def test_07_pfcp_failure(self) -> None:
-        report = run_diagnosis(str(FIXTURES / "07_pfcp_failure.pcapng"))
+        report = _analyze_capture(FIXTURES / "07_pfcp_failure.pcapng")
         assert report.overall_verdict == "FAIL"
         assert report.overall_failure_point == "PDU_SESSION_ESTABLISHMENT"
 
     def test_08_sbi_failure(self) -> None:
-        report = run_diagnosis(str(FIXTURES / "08_sbi_failure.pcapng"))
+        report = _analyze_capture(FIXTURES / "08_sbi_failure.pcapng")
         assert report.overall_verdict == "FAIL"
         assert "SBI" in (report.overall_failure_point or "")
 
     def test_09_multi_ue_concurrent(self) -> None:
-        report = run_diagnosis(str(FIXTURES / "09_multi_ue_concurrent.pcapng"))
+        report = _analyze_capture(FIXTURES / "09_multi_ue_concurrent.pcapng")
         assert report.overall_verdict == "OK"
-        assert report.session_count >= 2
+        assert report.scope_count >= 2
 
     def test_11_registration_retry(self) -> None:
-        report = run_diagnosis(str(FIXTURES / "11_registration_retry.pcapng"))
+        report = _analyze_capture(FIXTURES / "11_registration_retry.pcapng")
         assert report.overall_verdict == "FAIL_THEN_OK"
 
     def test_13_pdu_session_release(self) -> None:
-        report = run_diagnosis(str(FIXTURES / "13_pdu_session_release.pcapng"))
+        report = _analyze_capture(FIXTURES / "13_pdu_session_release.pcapng")
         assert report.overall_verdict == "OK"
 
     def test_15_partial_visibility(self) -> None:
-        report = run_diagnosis(str(FIXTURES / "15_partial_visibility_multi_host.pcapng"))
+        report = _analyze_capture(FIXTURES / "15_partial_visibility_multi_host.pcapng")
         assert report.overall_verdict == "INCONCLUSIVE"
 
 

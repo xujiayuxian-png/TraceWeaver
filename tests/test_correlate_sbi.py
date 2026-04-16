@@ -1,4 +1,4 @@
-from traceweaver.correlate.sbi import correlate_sbi_to_sessions, pair_sbi_calls
+from traceweaver.profiles.open5gs_5gc.assemble.sbi import correlate_sbi_to_sessions, pair_sbi_calls
 from traceweaver.models import ExtractedRecordSet, NormalizedRecord, UESession
 
 

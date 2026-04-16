@@ -122,7 +122,6 @@ def _collect_pfcp_signals(session: UESession) -> list[DiagnosticSignal]:
 
 
 def _collect_retry_signals(session: UESession) -> list[DiagnosticSignal]:
-    """Detect T3580 retry: repeated PDU_SESSION_ESTABLISHMENT_REQUEST without accept."""
     signals: list[DiagnosticSignal] = []
     for pdu_flow in session.pdu_sessions:
         establishment_requests: list[tuple[int, float]] = []
@@ -148,12 +147,9 @@ def _collect_retry_signals(session: UESession) -> list[DiagnosticSignal]:
             )
 
     reg_requests: list[tuple[int, float]] = []
-    has_accept = False
     for event in session.events:
         if event.event_name == "REGISTRATION_REQUEST":
             reg_requests.append((event.frame_number, event.time_epoch))
-        elif event.event_name == "REGISTRATION_ACCEPT":
-            has_accept = True
 
     if len(reg_requests) > 1:
         signals.append(
@@ -172,7 +168,6 @@ def _collect_retry_signals(session: UESession) -> list[DiagnosticSignal]:
 def _collect_pfcp_record_signals(
     record_set: ExtractedRecordSet, session: UESession
 ) -> list[DiagnosticSignal]:
-    """Scan raw records for PFCP association-level signals not tied to a PDU flow."""
     signals: list[DiagnosticSignal] = []
     assoc_requests: list[tuple[int, float]] = []
 

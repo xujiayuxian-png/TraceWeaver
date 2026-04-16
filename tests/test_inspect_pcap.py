@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from traceweaver.ingest import inspect_capture
+from traceweaver.core import inspect_capture
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "pcap"
 

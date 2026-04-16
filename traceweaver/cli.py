@@ -5,81 +5,102 @@ import logging
 import sys
 from pathlib import Path
 
-from traceweaver.diagnosis import run_diagnosis
-from traceweaver.ingest import extract_5gc_events, extract_pdu_sessions, extract_5gc_records, extract_sbi_calls, extract_ue_sessions, inspect_capture
+from traceweaver.core import AnalysisOptions, analyze_capture, list_profiles, list_scope_summaries
 from traceweaver.tshark import ExternalToolError
+
+
+def _add_output_args(parser: argparse.ArgumentParser) -> None:
+    format_group = parser.add_mutually_exclusive_group()
+    format_group.add_argument("--pretty", action="store_true")
+    format_group.add_argument("--compact", action="store_true")
+
+
+def _add_profile_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--profile", type=str, default="open5gs_5gc")
+    parser.add_argument("--display-filter", type=str, default=None)
+    parser.add_argument("--decode-as", action="append", default=[])
+    parser.add_argument("--limit", type=int)
+
+
+def _add_llm_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="LLM model for diagnosis/investigation (e.g. ollama/qwen3:14b, gpt-4o). Omit to use rule-based diagnosis.",
+    )
+    parser.add_argument("--api-base", type=str, default=None, help="API base URL")
+    parser.add_argument("--api-key", type=str, default=None, help="API key for OpenAI-compatible providers")
+    parser.add_argument("--temperature", type=float, default=0.1)
+    parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+
+
+def _build_options(args: argparse.Namespace) -> AnalysisOptions:
+    return AnalysisOptions(
+        display_filter=getattr(args, "display_filter", None),
+        decode_as=list(getattr(args, "decode_as", []) or []),
+        limit=getattr(args, "limit", None),
+    )
+
+
+def _build_llm_provider(args: argparse.Namespace):
+    model = getattr(args, "model", None)
+    if not model:
+        return None
+
+    from traceweaver.llm import LLMConfig, LLMProvider
+
+    config = LLMConfig(
+        model=model,
+        api_base=getattr(args, "api_base", None),
+        api_key=getattr(args, "api_key", None),
+        temperature=getattr(args, "temperature", 0.1),
+    )
+    return LLMProvider(config)
+
+
+def _emit_payload(payload, args: argparse.Namespace) -> None:
+    indent = None if getattr(args, "compact", False) else 2
+    print(payload.model_dump_json(indent=indent))
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="traceweaver")
     subparsers = parser.add_subparsers(dest="command")
 
-    inspect_parser = subparsers.add_parser("inspect-pcap")
-    inspect_parser.add_argument("pcap_path", type=Path)
-    format_group = inspect_parser.add_mutually_exclusive_group()
-    format_group.add_argument("--pretty", action="store_true")
-    format_group.add_argument("--compact", action="store_true")
+    profiles_parser = subparsers.add_parser("profiles")
+    profiles_subparsers = profiles_parser.add_subparsers(dest="profiles_command")
+    profiles_list_parser = profiles_subparsers.add_parser("list")
+    _add_output_args(profiles_list_parser)
 
-    extract_parser = subparsers.add_parser("extract-records")
-    extract_parser.add_argument("pcap_path", type=Path)
-    extract_parser.add_argument("--limit", type=int)
-    extract_format_group = extract_parser.add_mutually_exclusive_group()
-    extract_format_group.add_argument("--pretty", action="store_true")
-    extract_format_group.add_argument("--compact", action="store_true")
+    scopes_parser = subparsers.add_parser("scopes")
+    scopes_subparsers = scopes_parser.add_subparsers(dest="scopes_command")
+    scopes_list_parser = scopes_subparsers.add_parser("list")
+    scopes_list_parser.add_argument("pcap_path", type=Path)
+    _add_profile_args(scopes_list_parser)
+    _add_output_args(scopes_list_parser)
 
-    events_parser = subparsers.add_parser("extract-events")
-    events_parser.add_argument("pcap_path", type=Path)
-    events_parser.add_argument("--limit", type=int)
-    events_format_group = events_parser.add_mutually_exclusive_group()
-    events_format_group.add_argument("--pretty", action="store_true")
-    events_format_group.add_argument("--compact", action="store_true")
+    analyze_parser = subparsers.add_parser("analyze")
+    analyze_parser.add_argument("pcap_path", type=Path)
+    _add_profile_args(analyze_parser)
+    _add_llm_args(analyze_parser)
+    _add_output_args(analyze_parser)
 
-    sessions_parser = subparsers.add_parser("extract-sessions")
-    sessions_parser.add_argument("pcap_path", type=Path)
-    sessions_parser.add_argument("--limit", type=int)
-    sessions_format_group = sessions_parser.add_mutually_exclusive_group()
-    sessions_format_group.add_argument("--pretty", action="store_true")
-    sessions_format_group.add_argument("--compact", action="store_true")
+    diagnose_parser = subparsers.add_parser("diagnose")
+    diagnose_parser.add_argument("pcap_path", type=Path)
+    _add_profile_args(diagnose_parser)
+    _add_llm_args(diagnose_parser)
+    _add_output_args(diagnose_parser)
 
-    sbi_parser = subparsers.add_parser("extract-sbi")
-    sbi_parser.add_argument("pcap_path", type=Path)
-    sbi_parser.add_argument("--limit", type=int)
-    sbi_format_group = sbi_parser.add_mutually_exclusive_group()
-    sbi_format_group.add_argument("--pretty", action="store_true")
-    sbi_format_group.add_argument("--compact", action="store_true")
-
-    pdu_parser = subparsers.add_parser("extract-pdu-sessions")
-    pdu_parser.add_argument("pcap_path", type=Path)
-    pdu_parser.add_argument("--limit", type=int)
-    pdu_format_group = pdu_parser.add_mutually_exclusive_group()
-    pdu_format_group.add_argument("--pretty", action="store_true")
-    pdu_format_group.add_argument("--compact", action="store_true")
-
-    diag_parser = subparsers.add_parser("diagnose")
-    diag_parser.add_argument("pcap_path", type=Path)
-    diag_parser.add_argument("--limit", type=int)
-    diag_parser.add_argument(
-        "--model",
-        type=str,
-        default=None,
-        help="LLM model for diagnosis (e.g. ollama/qwen2.5:14b, gpt-4o, openai/gpt-4.1-mini). "
-             "Omit to use the rule engine.",
-    )
-    diag_parser.add_argument("--api-base", type=str, default=None, help="API base URL (e.g. http://localhost:11434)")
-    diag_parser.add_argument("--api-key", type=str, default=None, help="API key for OpenAI-compatible providers")
-    diag_parser.add_argument("--temperature", type=float, default=0.1)
-    diag_parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
-    diag_format_group = diag_parser.add_mutually_exclusive_group()
-    diag_format_group.add_argument("--pretty", action="store_true")
-    diag_format_group.add_argument("--compact", action="store_true")
+    investigate_parser = subparsers.add_parser("investigate")
+    investigate_parser.add_argument("pcap_path", type=Path)
+    _add_profile_args(investigate_parser)
+    _add_llm_args(investigate_parser)
+    _add_output_args(investigate_parser)
 
     args = parser.parse_args()
 
-    valid_commands = {
-        "inspect-pcap", "extract-records", "extract-events",
-        "extract-sessions", "extract-sbi", "extract-pdu-sessions", "diagnose",
-    }
-    if args.command not in valid_commands:
+    if args.command is None:
         parser.print_help()
         raise SystemExit(1)
 
@@ -87,33 +108,29 @@ def main() -> None:
         logging.basicConfig(level=logging.DEBUG, format="%(name)s %(levelname)s: %(message)s", stream=sys.stderr)
 
     try:
-        if args.command == "inspect-pcap":
-            payload = inspect_capture(args.pcap_path)
-        elif args.command == "extract-records":
-            payload = extract_5gc_records(args.pcap_path, limit=args.limit)
-        elif args.command == "extract-events":
-            payload = extract_5gc_events(args.pcap_path, limit=args.limit)
-        elif args.command == "extract-sbi":
-            payload = extract_sbi_calls(args.pcap_path, limit=args.limit)
-        elif args.command == "extract-pdu-sessions":
-            payload = extract_pdu_sessions(args.pcap_path, limit=args.limit)
-        elif args.command == "diagnose":
-            llm_provider = None
-            if args.model:
-                from traceweaver.llm import LLMConfig, LLMProvider
-                config = LLMConfig(
-                    model=args.model,
-                    api_base=args.api_base,
-                    api_key=args.api_key,
-                    temperature=args.temperature,
-                )
-                llm_provider = LLMProvider(config)
-            payload = run_diagnosis(args.pcap_path, limit=args.limit, llm_provider=llm_provider)
+        if args.command == "profiles":
+            if args.profiles_command != "list":
+                profiles_parser.print_help()
+                raise SystemExit(1)
+            payload = list_profiles()
+        elif args.command == "scopes":
+            if args.scopes_command != "list":
+                scopes_parser.print_help()
+                raise SystemExit(1)
+            payload = list_scope_summaries(
+                args.pcap_path,
+                profile=args.profile,
+                options=_build_options(args),
+            )
         else:
-            payload = extract_ue_sessions(args.pcap_path, limit=args.limit)
+            payload = analyze_capture(
+                args.pcap_path,
+                profile=args.profile,
+                llm_provider=_build_llm_provider(args),
+                options=_build_options(args),
+            )
     except (ExternalToolError, FileNotFoundError, IsADirectoryError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from exc
 
-    indent = None if getattr(args, "compact", False) else 2
-    print(payload.model_dump_json(indent=indent))
+    _emit_payload(payload, args)

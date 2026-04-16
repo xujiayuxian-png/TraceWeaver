@@ -19,7 +19,7 @@
 已提取到 `traceweaver/utils.py`，三处调用点已统一使用 `parse_optional_int` / `parse_optional_float`。
 
 ### 5. `correlate_sbi_to_sessions` 有隐式副作用
-`traceweaver/correlate/sbi.py:120`
+`traceweaver/profiles/open5gs_5gc/assemble/sbi.py`
 
 函数返回 `list[SBICall]`，但同时 mutate 了传入的 `sessions`（追加 sbi_calls、更新 suci/supi）。副作用在签名上不可见。
 
@@ -34,9 +34,9 @@
 ## 工程质量
 
 ### 8. CLI `--limit` 语义对用户有误导
-`traceweaver/cli.py:66-74`
+`traceweaver/cli.py`
 
-`extract-sessions`/`extract-sbi`/`extract-pdu-sessions` 的 `--limit` 实际限制的是底层原始 record 数量，而非 session/call 数量。用户传 `--limit 10` 期望得到 10 个 session，实际可能得到 0 个。
+终态 `analyze` / `diagnose` / `investigate` / `scopes list` 的 `--limit` 仍然限制的是底层原始 record 数量，而不是 scope 数量。用户传 `--limit 10` 可能得到不完整 scope，甚至 0 个有效 scope。
 
 ### 9. 没有 verbose 模式，调试输出和生产输出混用
 `traceweaver/tshark/extract.py:211`

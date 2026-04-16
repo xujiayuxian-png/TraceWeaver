@@ -6,7 +6,6 @@ from collections import defaultdict
 from traceweaver.models import ExtractedRecordSet, SBICall, UESession
 from traceweaver.utils import parse_optional_int
 
-DIRECT_IDENTITY_SERVICES = {"nudm-ueau", "nudm-uecm", "nudm-sdm", "namf-comm"}
 TIME_WINDOW_SECONDS = 2.0
 
 
@@ -168,8 +167,7 @@ def correlate_sbi_to_sessions(
 
     if warnings is not None:
         warnings.append(
-            f"sbi_correlation_summary: total={len(calls)} matched={len(calls) - unmatched_count} "
-            f"unmatched={unmatched_count} ambiguous={ambiguous_count}"
+            f"sbi_correlation_summary: total={len(calls)} matched={len(calls) - unmatched_count} unmatched={unmatched_count} ambiguous={ambiguous_count}"
         )
         if unmatched_count > 0:
             warnings.append("sbi_correlation_unmatched_calls_detected")

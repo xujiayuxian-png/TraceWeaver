@@ -22,31 +22,33 @@ TraceWeaver 是一个 5GC/Open5GS 网络包分析工具，通过解析 pcap 文�
 
 ## 2. 已完成的功能（Phase 1）
 
-### 2.1 CLI 命令（7个）
+### 2.1 CLI 命令（终态入口）
 
 | 命令 | 功能 | 示例 |
 |------|------|------|
-| `inspect-pcap` | pcap 基础元信息检查 | `traceweaver inspect-pcap file.pcapng` |
-| `extract-records` | 原始协议记录提取 | `traceweaver extract-records file.pcapng` |
-| `extract-events` | NAS 事件识别 | `traceweaver extract-events file.pcapng` |
-| `extract-sessions` | UE Session 分组 | `traceweaver extract-sessions file.pcapng --compact` |
-| `extract-sbi` | HTTP2 SBI 调用提取 | `traceweaver extract-sbi file.pcapng --compact` |
-| `extract-pdu-sessions` | PDU Session 组装 | `traceweaver extract-pdu-sessions file.pcapng` |
-| `diagnose` | **端到端诊断** | `traceweaver diagnose file.pcapng --compact` |
-| `diagnose --model` | **LLM 诊断** | `traceweaver diagnose file.pcapng --model ollama/qwen2.5:14b` |
+| `profiles list` | 列出可用 profile | `traceweaver profiles list` |
+| `scopes list` | 预览 profile 生成的分析 scope | `traceweaver scopes list file.pcapng --profile open5gs_5gc` |
+| `analyze` | 统一分析入口 | `traceweaver analyze file.pcapng --profile open5gs_5gc --compact` |
+| `diagnose` | 终态诊断入口 | `traceweaver diagnose file.pcapng --profile open5gs_5gc --compact` |
+| `diagnose --model` | LLM 驱动诊断 | `traceweaver diagnose file.pcapng --profile open5gs_5gc --model ollama/qwen3.5:9b` |
+| `investigate` | 终态 investigation 入口 | `traceweaver investigate file.pcapng --profile open5gs_5gc` |
 
 ### 2.2 核心数据流
 
 ```
-pcap → extract_5gc_records() → NormalizedRecord[]
-                              ↓
-                    group_ue_sessions() → UESession[]
-                              ↓
-                    correlate_sbi_to_sessions() → UESession + SBI calls
-                              ↓
-                    build_pdu_sessions_for_ue() → PDUSessionFlow[]
-                              ↓
-                    correlate_pfcp_to_pdu() → PDUSessionFlow + PFCP flows
+pcap → analyze_capture(profile="open5gs_5gc")
+                      ↓
+profiles.open5gs_5gc.extract.records.extract_records()
+                      ↓
+profiles.open5gs_5gc.assemble.group_ue_sessions()
+                      ↓
+profiles.open5gs_5gc.assemble.correlate_sbi_to_sessions()
+                      ↓
+profiles.open5gs_5gc.assemble.build_pdu_sessions_for_ue()
+                      ↓
+profiles.open5gs_5gc.diagnosis.collect_signals()
+                      ↓
+profiles.open5gs_5gc.diagnosis.diagnose_session() / llm_diagnose_session()
 ```
 
 ### 2.3 关键算法
@@ -155,7 +157,7 @@ SINGLE_VALUE_FIELDS = { "ngap.RAN_UE_NGAP_ID", "nas_5gs.mm.message_type", ... }
 ### 4.2 受保护 5GSM 消息归属
 - 问题：安全模式后的 5GSM 帧没有 NGAP UE ID
 - 解决：对无 UE ID 的 nas_5gs 帧，用保守的单候选时间窗口挂接
-- 实现位置：`traceweaver/correlate/ue_sessions.py` line 70-82
+- 实现位置：`traceweaver/profiles/open5gs_5gc/assemble/ue.py`
 
 ### 4.3 SBI URL 中 SUPI 覆盖率
 | 服务 | URL 含 SUPI | 说明 |
@@ -292,16 +294,19 @@ pip install -e ".[dev]"
 ## 8. 快速开始
 
 ```bash
-# 1. 检查 pcap
-python3 -B -m traceweaver inspect-pcap tests/fixtures/pcap/01_registration_success.pcapng
+# 1. 查看可用 profile
+python3 -B -m traceweaver profiles list
 
-# 2. 提取 UE Session（含 SBI + PDU）
-python3 -B -m traceweaver extract-sessions tests/fixtures/pcap/02_registration_and_pdu_session_success.pcapng --compact
+# 2. 预览分析 scope
+python3 -B -m traceweaver scopes list tests/fixtures/pcap/01_registration_success.pcapng --profile open5gs_5gc --compact
 
-# 3. 提取 PDU Session
-python3 -B -m traceweaver extract-pdu-sessions tests/fixtures/pcap/13_pdu_session_release.pcapng --compact
+# 3. 运行统一分析
+python3 -B -m traceweaver analyze tests/fixtures/pcap/02_registration_and_pdu_session_success.pcapng --profile open5gs_5gc --compact
 
-# 4. 运行测试
+# 4. 运行 LLM 诊断
+python3 -B -m traceweaver diagnose tests/fixtures/pcap/01_registration_success.pcapng --profile open5gs_5gc --model ollama/qwen3.5:9b --compact
+
+# 5. 运行测试
 python3 -B -m pytest -q
 ```
 
@@ -312,9 +317,9 @@ python3 -B -m pytest -q
 | 需求 | 查看文件 |
 |------|----------|
 | 了解设计思路 | `plan/cross-protocol-correlation.md` |
-| 事件映射表 | `traceweaver/events/identify.py` |
+| 事件映射表 | `traceweaver/profiles/open5gs_5gc/events/identify.py` |
 | 模型定义 | `traceweaver/models/*.py` |
-| 关联算法 | `traceweaver/correlate/*.py` |
+| 关联算法 | `traceweaver/profiles/open5gs_5gc/assemble/*.py` |
 | CLI 入口 | `traceweaver/cli.py` |
 | 测试样本 | `tests/fixtures/pcap/` |
 | 预期诊断 | `tests/fixtures/expected_diagnosis.json` |

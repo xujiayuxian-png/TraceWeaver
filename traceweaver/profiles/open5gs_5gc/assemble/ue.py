@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from traceweaver.events.identify import detect_events_for_record
 from traceweaver.models import ExtractedRecordSet, UESession
+from traceweaver.profiles.open5gs_5gc.events.identify import detect_events_for_record
 
 TIME_WINDOW_SECONDS = 2.0
 
@@ -101,7 +101,7 @@ def group_ue_sessions(
                 prior_key = ran_index.get(ran_ue_ngap_id) or amf_index.get(amf_ue_ngap_id)
                 if prior_key and prior_key != key:
                     prior_ran, prior_amf = prior_key
-                    is_upgrade = (prior_ran is None or prior_amf is None)
+                    is_upgrade = prior_ran is None or prior_amf is None
                     if is_upgrade:
                         session = remove_key(prior_key)
                         session.ran_ue_ngap_id = ran_ue_ngap_id

@@ -6,6 +6,7 @@ from traceweaver.core.analysis.options import AnalysisOptions
 from traceweaver.core.analysis.result import AnalysisResult
 from traceweaver.core.contracts import AnalysisScope, CaptureRecord, DiagnosisContext, DiagnosticSignal, EvidenceItem, ScopeDiagnosis, StructuredEvent, VisibilityAssessment
 from traceweaver.models import ExtractedRecordSet, NormalizedRecord, PDUSessionFlow, SessionDiagnosis, UESession
+from traceweaver.profiles.open5gs_5gc.investigation import build_investigation_tool_registry as build_tool_registry
 from traceweaver.profiles.open5gs_5gc.assemble import build_pdu_sessions_for_ue, correlate_pfcp_to_pdu, correlate_sbi_to_sessions, group_ue_sessions, pair_sbi_calls
 from traceweaver.profiles.open5gs_5gc.diagnosis import collect_signals, diagnose_session, llm_diagnose_session
 from traceweaver.profiles.open5gs_5gc.extract import extract_records
@@ -75,6 +76,13 @@ class Open5GS5GCProfile:
             diagnoses=scope_diagnoses,
         )
         return result, contexts
+
+    def build_investigation_tool_registry(
+        self,
+        context: DiagnosisContext,
+        diagnosis: ScopeDiagnosis | None,
+    ):
+        return build_tool_registry(context, diagnosis)
 
     def _diagnose_sessions(
         self,

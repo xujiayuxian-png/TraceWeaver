@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from traceweaver.core.agent.planner import InvestigationPlan, build_investigation_plan, evaluate_termination
 from traceweaver.core.agent.result import InvestigationResult, InvestigationStep, ScopeInvestigation
+from traceweaver.core.agent.tools import InvestigationToolRegistry, InvestigationToolResult
 from traceweaver.core.analysis.options import AnalysisOptions
 from traceweaver.core.contracts import DiagnosisContext, ScopeDiagnosis
 from traceweaver.core.profile import get_profile
@@ -24,13 +26,18 @@ def investigate_capture(
     )
 
     diagnosis_index = {item.scope_id: item for item in analysis_result.diagnoses}
-    investigations = [
-        _investigate_scope(context, diagnosis_index.get(context.scope.scope_id))
-        for context in contexts
-    ]
+    investigations: list[ScopeInvestigation] = []
+    for context in contexts:
+        diagnosis = diagnosis_index.get(context.scope.scope_id)
+        registry = profile_impl.build_investigation_tool_registry(context, diagnosis)
+        plan = build_investigation_plan(context, diagnosis, registry.list_names())
+        investigation = _investigate_scope(context, diagnosis, registry, plan)
+        investigations.append(investigation)
+        if diagnosis is not None:
+            diagnosis.investigation_trace = _build_trace_payload(investigation)
 
     warnings = list(analysis_result.warnings)
-    warnings.append(f"investigation_engine: generic ({len(contexts)} contexts)")
+    warnings.append(f"investigation_engine: planner+tools ({len(contexts)} contexts)")
 
     return InvestigationResult(
         path=analysis_result.path,
@@ -51,60 +58,66 @@ def investigate_capture(
 def _investigate_scope(
     context: DiagnosisContext,
     diagnosis: ScopeDiagnosis | None,
+    registry: InvestigationToolRegistry,
+    plan: InvestigationPlan,
 ) -> ScopeInvestigation:
-    steps: list[InvestigationStep] = []
+    steps: list[InvestigationStep] = [
+        InvestigationStep(
+            step_id=f"{context.scope.scope_id}:plan",
+            scope_id=context.scope.scope_id,
+            action="build_plan",
+            summary=f"planned_tools={len(plan.tool_sequence)} hypotheses={len(plan.hypotheses)}",
+            details=plan.model_dump(),
+        )
+    ]
     evidence_refs = [item.evidence_id for item in context.evidence]
-    hypotheses = _build_hypotheses(context, diagnosis)
-    next_actions = _build_next_actions(context, diagnosis)
-    visibility = context.visibility
+    tool_results: list[InvestigationToolResult] = []
+    executed_tools: list[str] = []
+    hypotheses = [item.statement for item in plan.hypotheses]
+    primary_hypothesis = hypotheses[0] if hypotheses else None
 
-    if visibility is not None:
+    for tool_name in plan.tool_sequence:
+        result = registry.execute(
+            tool_name,
+            context=context,
+            diagnosis=diagnosis,
+            hypothesis=primary_hypothesis,
+        )
+        tool_results.append(result)
+        executed_tools.append(tool_name)
+        evidence_refs.extend(result.evidence_refs)
         steps.append(
             InvestigationStep(
-                step_id=f"{context.scope.scope_id}:visibility",
+                step_id=f"{context.scope.scope_id}:tool:{tool_name}",
                 scope_id=context.scope.scope_id,
-                action="assess_visibility",
-                summary=f"visibility={visibility.completeness}",
+                action="run_tool",
+                summary=result.summary,
                 details={
-                    "missing_segments": list(visibility.missing_segments),
-                    "weak_links": list(visibility.weak_links),
-                    "warnings": list(visibility.warnings),
+                    "tool_name": tool_name,
+                    "hypothesis": primary_hypothesis,
+                    "result": result.model_dump(),
                 },
             )
         )
 
-    if diagnosis is not None:
-        steps.append(
-            InvestigationStep(
-                step_id=f"{context.scope.scope_id}:hypothesis",
-                scope_id=context.scope.scope_id,
-                action="evaluate_primary_hypothesis",
-                summary=diagnosis.summary or diagnosis.verdict,
-                details={
-                    "verdict": diagnosis.verdict,
-                    "failure_point": diagnosis.failure_point,
-                    "root_cause": diagnosis.root_cause,
-                    "confidence": diagnosis.confidence,
-                },
-            )
-        )
-
+    termination = evaluate_termination(
+        context,
+        diagnosis,
+        executed_tools=executed_tools,
+    )
     steps.append(
         InvestigationStep(
-            step_id=f"{context.scope.scope_id}:evidence",
+            step_id=f"{context.scope.scope_id}:termination",
             scope_id=context.scope.scope_id,
-            action="review_evidence",
-            summary=f"evidence_items={len(context.evidence)} signals={len(context.signals)}",
-            details={
-                "evidence_refs": evidence_refs,
-                "signal_names": [item.name for item in context.signals],
-            },
+            action="terminate_investigation",
+            summary=termination.reason,
+            details=termination.model_dump(),
         )
     )
 
     verdict = diagnosis.verdict if diagnosis is not None else "INCONCLUSIVE"
-    confidence = diagnosis.confidence if diagnosis is not None else "low"
-    summary = diagnosis.summary if diagnosis is not None else f"{context.scope.scope_id} unresolved"
+    confidence = diagnosis.confidence if diagnosis is not None else termination.confidence
+    summary = diagnosis.summary if diagnosis is not None else termination.reason
 
     return ScopeInvestigation(
         scope_id=context.scope.scope_id,
@@ -112,44 +125,33 @@ def _investigate_scope(
         verdict=verdict,
         confidence=confidence,
         summary=summary,
+        plan=plan,
         hypotheses=hypotheses,
-        evidence_refs=evidence_refs,
-        next_actions=next_actions,
+        evidence_refs=_dedupe(evidence_refs),
+        executed_tools=executed_tools,
+        tool_results=tool_results,
+        termination=termination,
+        next_actions=list(termination.next_actions),
         steps=steps,
     )
 
 
-def _build_hypotheses(
-    context: DiagnosisContext,
-    diagnosis: ScopeDiagnosis | None,
-) -> list[str]:
-    if diagnosis is None:
-        return ["scope_diagnosis_missing"]
-    if diagnosis.verdict == "FAIL":
-        if diagnosis.root_cause:
-            return [diagnosis.root_cause]
-        if diagnosis.failure_point:
-            return [f"failure_at_{diagnosis.failure_point.lower()}"]
-        return ["unclassified_failure"]
-    if diagnosis.verdict == "INCONCLUSIVE":
-        if context.visibility and context.visibility.completeness != "complete":
-            return ["capture_visibility_gap"]
-        return ["insufficient_decisive_evidence"]
-    return ["successful_control_plane_sequence"]
+def _build_trace_payload(investigation: ScopeInvestigation) -> list[dict]:
+    payload: list[dict] = []
+    if investigation.plan is not None:
+        payload.append({"phase": "plan", "data": investigation.plan.model_dump()})
+    for result in investigation.tool_results:
+        payload.append({"phase": "tool", "data": result.model_dump()})
+    if investigation.termination is not None:
+        payload.append({"phase": "termination", "data": investigation.termination.model_dump()})
+    return payload
 
 
-def _build_next_actions(
-    context: DiagnosisContext,
-    diagnosis: ScopeDiagnosis | None,
-) -> list[str]:
-    actions: list[str] = []
-    visibility = context.visibility
-    if visibility is not None and visibility.completeness != "complete":
-        actions.append("collect a broader capture to cover missing protocol segments")
-    if diagnosis is not None and diagnosis.failure_point:
-        actions.append(f"inspect evidence around failure point {diagnosis.failure_point}")
-    if diagnosis is not None and diagnosis.root_cause:
-        actions.append(f"verify root cause hypothesis {diagnosis.root_cause}")
-    if not actions:
-        actions.append("review scope timeline and key evidence for confirmation")
-    return actions
+def _dedupe(items: list[str]) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        if item and item not in seen:
+            seen.add(item)
+            ordered.append(item)
+    return ordered

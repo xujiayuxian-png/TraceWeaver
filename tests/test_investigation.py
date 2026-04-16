@@ -22,6 +22,16 @@ def test_investigate_capture_returns_contexts_and_investigations() -> None:
     assert first_context.scope.scope_id == first_investigation.scope_id
     assert first_context.visibility is not None
     assert first_context.evidence
+    assert first_investigation.plan is not None
     assert first_investigation.steps
     assert first_investigation.hypotheses
+    assert first_investigation.executed_tools
+    assert first_investigation.tool_results
+    assert first_investigation.termination is not None
     assert first_investigation.next_actions
+
+    first_diagnosis = result.diagnoses[0]
+    phases = [item["phase"] for item in first_diagnosis.investigation_trace]
+    assert phases[0] == "plan"
+    assert "tool" in phases
+    assert phases[-1] == "termination"

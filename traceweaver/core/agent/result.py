@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from traceweaver.core.agent.planner import InvestigationPlan, InvestigationTermination
+from traceweaver.core.agent.tools import InvestigationToolResult
 from traceweaver.core.contracts import DiagnosisContext, ScopeDiagnosis
 
 
@@ -26,8 +28,12 @@ class ScopeInvestigation(BaseModel):
     verdict: str
     confidence: str = "low"
     summary: str = ""
+    plan: InvestigationPlan | None = None
     hypotheses: list[str] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
+    executed_tools: list[str] = Field(default_factory=list)
+    tool_results: list[InvestigationToolResult] = Field(default_factory=list)
+    termination: InvestigationTermination | None = None
     next_actions: list[str] = Field(default_factory=list)
     steps: list[InvestigationStep] = Field(default_factory=list)
 

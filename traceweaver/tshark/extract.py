@@ -197,7 +197,14 @@ def _run_tshark_extract(
     for field_name in actual_fields:
         args.extend(["-e", field_name])
 
-    completed = subprocess.run(args, check=False, capture_output=True, text=True)
+    completed = subprocess.run(
+        args,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     if completed.returncode != 0:
         raise ExternalToolError(
             f"command failed: {' '.join(args)}\nstdout: {completed.stdout}\nstderr: {completed.stderr}"

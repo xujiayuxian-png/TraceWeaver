@@ -16,6 +16,8 @@ def _run_checked(args: Sequence[str]) -> str:
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if completed.returncode != 0:
         raise ExternalToolError(

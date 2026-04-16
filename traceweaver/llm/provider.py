@@ -79,13 +79,21 @@ class LLMProvider:
             {"role": "user", "content": user_prompt},
         ]
 
+        extra_params = dict(self.config.extra_params)
+        extra_body = extra_params.get("extra_body")
+        if _should_disable_thinking(self.config.model):
+            if extra_body is None:
+                extra_params["extra_body"] = {"think": False}
+            elif isinstance(extra_body, dict) and "think" not in extra_body:
+                extra_params["extra_body"] = {**extra_body, "think": False}
+
         kwargs: dict = {
             "model": self.config.model,
             "messages": messages,
             "temperature": self.config.temperature,
             "max_tokens": self.config.max_tokens,
             "timeout": self.config.timeout,
-            **self.config.extra_params,
+            **extra_params,
         }
         if self.config.api_base:
             kwargs["api_base"] = self.config.api_base
@@ -108,6 +116,11 @@ class LLMProvider:
         """Call LLM with JSON output enforcement and parse the result."""
         raw = self.complete(system_prompt, user_prompt)
         return _extract_json(raw)
+
+
+def _should_disable_thinking(model: str) -> bool:
+    lower = model.lower()
+    return lower.startswith("ollama/qwen3")
 
 
 def _extract_json(text: str) -> dict:

@@ -9,7 +9,7 @@ import pytest
 from traceweaver.diagnosis.run import run_diagnosis
 from traceweaver.llm.output import LLMDiagnosisOutput, parse_llm_diagnosis
 from traceweaver.llm.prompts import build_diagnosis_prompt, format_signals, format_timeline
-from traceweaver.llm.provider import LLMConfig, LLMProvider, _extract_json, infer_model_tier
+from traceweaver.llm.provider import LLMConfig, LLMProvider, _extract_json, _should_disable_thinking, infer_model_tier
 from traceweaver.models import DiagnosticSignal, UESession
 
 FIXTURES = Path(__file__).parent / "fixtures" / "pcap"
@@ -38,6 +38,53 @@ class TestModelTierInference:
     def test_config_tier_override(self) -> None:
         config = LLMConfig(model="qwen2.5:7b", tier="large")
         assert config.model_tier == "large"
+
+    def test_qwen3_ollama_disables_thinking(self) -> None:
+        assert _should_disable_thinking("ollama/qwen3.5:9b") is True
+
+
+class TestLLMProviderCompatibility:
+    @patch("traceweaver.llm.provider.litellm.completion")
+    def test_qwen3_ollama_injects_think_false(self, mock_completion) -> None:
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content='{"ok": true}'))]
+        mock_response.usage = None
+        mock_completion.return_value = mock_response
+
+        provider = LLMProvider(LLMConfig(model="ollama/qwen3.5:9b"))
+        content = provider.complete("system", "user")
+
+        assert content == '{"ok": true}'
+        assert mock_completion.call_args.kwargs["extra_body"] == {"think": False}
+
+    @patch("traceweaver.llm.provider.litellm.completion")
+    def test_qwen3_ollama_preserves_explicit_think_setting(self, mock_completion) -> None:
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content='{"ok": true}'))]
+        mock_response.usage = None
+        mock_completion.return_value = mock_response
+
+        provider = LLMProvider(
+            LLMConfig(
+                model="ollama/qwen3.5:9b",
+                extra_params={"extra_body": {"think": True, "foo": "bar"}},
+            )
+        )
+        provider.complete("system", "user")
+
+        assert mock_completion.call_args.kwargs["extra_body"] == {"think": True, "foo": "bar"}
+
+    @patch("traceweaver.llm.provider.litellm.completion")
+    def test_non_qwen3_model_does_not_inject_think_false(self, mock_completion) -> None:
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content='{"ok": true}'))]
+        mock_response.usage = None
+        mock_completion.return_value = mock_response
+
+        provider = LLMProvider(LLMConfig(model="ollama/qwen2.5:14b"))
+        provider.complete("system", "user")
+
+        assert "extra_body" not in mock_completion.call_args.kwargs
 
 
 class TestLLMOutputValidation:

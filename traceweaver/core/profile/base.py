@@ -4,6 +4,7 @@ from typing import Protocol
 
 from traceweaver.core.analysis.options import AnalysisOptions
 from traceweaver.core.analysis.result import AnalysisResult
+from traceweaver.core.contracts import DiagnosisContext
 
 
 class AnalysisProfile(Protocol):
@@ -17,3 +18,11 @@ class AnalysisProfile(Protocol):
         options: AnalysisOptions,
         llm_provider=None,
     ) -> AnalysisResult: ...
+
+    def build_diagnosis_contexts(
+        self,
+        path: str,
+        *,
+        options: AnalysisOptions,
+        llm_provider=None,
+    ) -> tuple[AnalysisResult, list[DiagnosisContext]]: ...

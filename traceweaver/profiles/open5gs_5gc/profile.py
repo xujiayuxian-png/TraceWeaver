@@ -4,7 +4,7 @@ from pathlib import Path
 
 from traceweaver.core.analysis.options import AnalysisOptions
 from traceweaver.core.analysis.result import AnalysisResult
-from traceweaver.core.contracts import AnalysisScope, CaptureRecord, DiagnosticSignal, ScopeDiagnosis, StructuredEvent
+from traceweaver.core.contracts import AnalysisScope, CaptureRecord, DiagnosisContext, DiagnosticSignal, EvidenceItem, ScopeDiagnosis, StructuredEvent, VisibilityAssessment
 from traceweaver.models import ExtractedRecordSet, NormalizedRecord, PDUSessionFlow, SessionDiagnosis, UESession
 from traceweaver.profiles.open5gs_5gc.assemble import build_pdu_sessions_for_ue, correlate_pfcp_to_pdu, correlate_sbi_to_sessions, group_ue_sessions, pair_sbi_calls
 from traceweaver.profiles.open5gs_5gc.diagnosis import collect_signals, diagnose_session, llm_diagnose_session
@@ -22,6 +22,20 @@ class Open5GS5GCProfile:
         options: AnalysisOptions,
         llm_provider=None,
     ) -> AnalysisResult:
+        result, _ = self.build_diagnosis_contexts(
+            path,
+            options=options,
+            llm_provider=llm_provider,
+        )
+        return result
+
+    def build_diagnosis_contexts(
+        self,
+        path: str,
+        *,
+        options: AnalysisOptions,
+        llm_provider=None,
+    ) -> tuple[AnalysisResult, list[DiagnosisContext]]:
         records = extract_records(
             Path(path),
             display_filter=options.display_filter,
@@ -40,7 +54,14 @@ class Open5GS5GCProfile:
         diagnoses = self._diagnose_sessions(records, sessions, warnings=warnings, llm_provider=llm_provider)
         overall = _compute_overall_verdict(diagnoses)
 
-        return AnalysisResult(
+        scopes = [_scope_from_ue_session(session) for session in sessions]
+        scope_diagnoses = [_scope_diagnosis_from_legacy(item) for item in diagnoses]
+        contexts = [
+            _build_diagnosis_context(scope, session, records)
+            for scope, session in zip(scopes, sessions, strict=False)
+        ]
+
+        result = AnalysisResult(
             path=records.path,
             file_name=records.file_name,
             profile_name=self.name,
@@ -50,9 +71,10 @@ class Open5GS5GCProfile:
             overall_root_cause=overall[2],
             overall_confidence=overall[3],
             warnings=warnings,
-            scopes=[_scope_from_ue_session(session) for session in sessions],
-            diagnoses=[_scope_diagnosis_from_legacy(item) for item in diagnoses],
+            scopes=scopes,
+            diagnoses=scope_diagnoses,
         )
+        return result, contexts
 
     def _diagnose_sessions(
         self,
@@ -177,6 +199,152 @@ def _scope_diagnosis_from_legacy(diagnosis: SessionDiagnosis) -> ScopeDiagnosis:
         notes=list(diagnosis.notes),
         summary=_diagnosis_summary(diagnosis),
     )
+
+
+def _build_diagnosis_context(
+    scope: AnalysisScope,
+    session: UESession,
+    records: ExtractedRecordSet,
+) -> DiagnosisContext:
+    legacy_signals = collect_signals(session, records)
+    visibility = _build_visibility(scope, legacy_signals)
+    evidence = _build_evidence(scope, session, legacy_signals)
+    return DiagnosisContext(
+        profile_name="open5gs_5gc",
+        scope=scope,
+        signals=[_signal_from_legacy(scope.scope_id, item) for item in legacy_signals],
+        evidence=evidence,
+        visibility=visibility,
+        knowledge_refs=[
+            "open5gs_5gc:registration_chain",
+            "open5gs_5gc:sbi_correlation",
+            "open5gs_5gc:pfcp_visibility",
+        ],
+    )
+
+
+def _signal_from_legacy(scope_id: str, signal) -> DiagnosticSignal:
+    frame_number = signal.frame_number
+    signal_id = f"{scope_id}:{signal.name}:{frame_number if frame_number is not None else 'na'}"
+    return DiagnosticSignal(
+        signal_id=signal_id,
+        name=signal.name,
+        scope_id=scope_id,
+        source=signal.source,
+        category=_signal_category(signal.name),
+        confidence="high",
+        summary=signal.name,
+        frame_number=frame_number,
+        time_epoch=signal.time_epoch,
+        details=dict(signal.details),
+        evidence_refs=[f"{scope_id}:signal:{signal.name}"],
+    )
+
+
+def _build_visibility(scope: AnalysisScope, legacy_signals: list) -> VisibilityAssessment:
+    signal_names = {item.name for item in legacy_signals}
+    missing_segments: list[str] = []
+    weak_links: list[str] = []
+    warnings: list[str] = []
+
+    if "NGAP_VISIBLE" not in signal_names:
+        missing_segments.append("ngap")
+    if "SBI_HTTP2_VISIBLE" not in signal_names:
+        weak_links.append("sbi_http2")
+    if "PFCP_VISIBLE" not in signal_names:
+        weak_links.append("pfcp")
+    if "PARTIAL_CAPTURE_NO_PFCP" in signal_names:
+        missing_segments.append("pfcp")
+        warnings.append("PFCP traffic not visible in capture")
+    if "LOW_RECORD_COUNT" in signal_names:
+        warnings.append("very small record set may indicate truncated capture")
+
+    completeness = "complete"
+    if missing_segments:
+        completeness = "partial"
+    elif weak_links:
+        completeness = "limited"
+
+    return VisibilityAssessment(
+        scope_id=scope.scope_id,
+        completeness=completeness,
+        missing_segments=missing_segments,
+        weak_links=weak_links,
+        warnings=warnings,
+    )
+
+
+def _build_evidence(
+    scope: AnalysisScope,
+    session: UESession,
+    legacy_signals: list,
+) -> list[EvidenceItem]:
+    evidence: list[EvidenceItem] = []
+    if session.events:
+        evidence.append(
+            EvidenceItem(
+                evidence_id=f"{scope.scope_id}:timeline:nas",
+                scope_id=scope.scope_id,
+                source_type="timeline",
+                source_name="nas_events",
+                summary=f"{len(session.events)} NAS/NGAP events attached to scope",
+                frame_numbers=[event.frame_number for event in session.events],
+                attributes={"event_names": [event.event_name for event in session.events]},
+                supports=["registration_chain"],
+            )
+        )
+    if session.sbi_calls:
+        evidence.append(
+            EvidenceItem(
+                evidence_id=f"{scope.scope_id}:timeline:sbi",
+                scope_id=scope.scope_id,
+                source_type="timeline",
+                source_name="sbi_calls",
+                summary=f"{len(session.sbi_calls)} SBI calls correlated to scope",
+                frame_numbers=[call.request_frame for call in session.sbi_calls if call.request_frame is not None],
+                attributes={"paths": [call.path for call in session.sbi_calls if call.path]},
+                supports=["sbi_correlation"],
+            )
+        )
+    if session.pdu_sessions:
+        evidence.append(
+            EvidenceItem(
+                evidence_id=f"{scope.scope_id}:timeline:pdu",
+                scope_id=scope.scope_id,
+                source_type="timeline",
+                source_name="pdu_sessions",
+                summary=f"{len(session.pdu_sessions)} PDU sessions assembled",
+                frame_numbers=[event.frame_number for flow in session.pdu_sessions for event in flow.events],
+                attributes={"pdu_session_ids": [flow.pdu_session_id for flow in session.pdu_sessions]},
+                supports=["pdu_correlation"],
+            )
+        )
+    if legacy_signals:
+        evidence.append(
+            EvidenceItem(
+                evidence_id=f"{scope.scope_id}:signal:summary",
+                scope_id=scope.scope_id,
+                source_type="signal_summary",
+                source_name="diagnostic_signals",
+                summary=f"{len(legacy_signals)} diagnostic signals extracted",
+                frame_numbers=[item.frame_number for item in legacy_signals if item.frame_number is not None],
+                attributes={"signal_names": [item.name for item in legacy_signals]},
+                supports=["diagnostic_signal_set"],
+            )
+        )
+    return evidence
+
+
+def _signal_category(name: str) -> str:
+    if name.startswith("SBI_"):
+        return "sbi"
+    if name.startswith("PFCP_"):
+        return "pfcp"
+    if name.startswith("NGAP_"):
+        return "ngap"
+    if name.startswith("PDU_") or name.startswith("T3580"):
+        return "session_management"
+    return "mobility"
 
 
 def _diagnosis_summary(diagnosis: SessionDiagnosis) -> str:

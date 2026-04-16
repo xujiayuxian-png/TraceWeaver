@@ -5,7 +5,7 @@ import logging
 import sys
 from pathlib import Path
 
-from traceweaver.core import AnalysisOptions, analyze_capture, list_profiles, list_scope_summaries
+from traceweaver.core import AnalysisOptions, analyze_capture, investigate_capture, list_profiles, list_scope_summaries
 from traceweaver.tshark import ExternalToolError
 
 
@@ -120,6 +120,13 @@ def main() -> None:
             payload = list_scope_summaries(
                 args.pcap_path,
                 profile=args.profile,
+                options=_build_options(args),
+            )
+        elif args.command == "investigate":
+            payload = investigate_capture(
+                args.pcap_path,
+                profile=args.profile,
+                llm_provider=_build_llm_provider(args),
                 options=_build_options(args),
             )
         else:

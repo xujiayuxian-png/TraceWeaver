@@ -714,16 +714,49 @@ traceweaver investigate <pcap> --profile open5gs_5gc
 
 # 完成状态
 
-- **[已完成]** 我已经把平台化翻转方案直接展开，包含：
-  - 目标架构
-  - core contract
-  - profile contract
-  - 目录结构
-  - 文件迁移映射
-  - 单次 cutover 方式
-  - CLI 调整
-  - agent 落点
-  - 关键架构约束
+- **[已完成]** 平台化翻转方案已全部实现：
+  - 目标架构：`core + profiles/open5gs_5gc`
+  - Core contracts: `CaptureRecord`, `StructuredEvent`, `AnalysisScope`, `DiagnosticSignal`, `EvidenceItem`, `VisibilityAssessment`, `DiagnosisContext`, `ScopeDiagnosis`
+  - Profile contract: `AnalysisProfile` 协议
+  - 目录结构：终态结构已全部落成
+  - CLI: `profiles list`, `scopes list`, `analyze`, `diagnose`, `investigate`
+  - Agentic Investigation Engine: 已完成多轮 loop、LLM planner、LLM termination reconsideration
+
+## Investigation Engine 详细状态
+
+### 已实现的 Agent 能力
+- **[完成]** `traceweaver/core/agent/engine.py` - 多轮 investigation loop (MAX_ROUNDS=3)
+- **[完成]** `traceweaver/core/agent/planner.py` - 规则 + LLM 双模式 hypothesis ranking / tool selection
+- **[完成]** `traceweaver/core/agent/prompts.py` - planner prompt + termination reconsideration prompt
+- **[完成]** `traceweaver/core/agent/tools.py` - 工具注册表 + 结构化结果
+- **[完成]** `traceweaver/profiles/open5gs_5gc/investigation.py` - profile 专属工具集
+  - `scope_overview`
+  - `visibility_analysis`
+  - `evidence_focus`
+  - `signal_focus`
+  - `protocol_drilldown` - 协议下钻
+  - `frame_targeting` - 帧级定位
+
+### LLM 参与层次
+1. **Diagnosis 阶段**: `llm_diagnose_session()` - LLM 主诊断引擎
+2. **Planner 阶段**: `_rank_with_llm()` - LLM 参与 hypothesis ranking / tool selection
+3. **Termination 阶段**: `reconsider_termination_with_llm()` - LLM 复核终止决策 + next action synthesis
+
+### CLI 支持
+```bash
+# 基础 investigation (规则驱动)
+traceweaver investigate file.pcapng --profile open5gs_5gc
+
+# 带 LLM 增强的 investigation
+traceweaver investigate file.pcapng --profile open5gs_5gc --model ollama/qwen2.5:14b
+
+# 指定 scope 调查
+traceweaver investigate file.pcapng --profile open5gs_5gc --scope-id ran-1__amf-2
+```
+
+### 测试结果
+- 全量测试：`107 passed, 42 skipped`
+- Investigation 专项测试：`4 passed` (含多轮 loop、scope_id 过滤、LLM planner、LLM termination 验证)
 
 如果你要，我下一条可以继续直接给你：
 

@@ -12,6 +12,7 @@ class InvestigationToolResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tool_name: str
+    round_index: int = 1
     summary: str
     details: dict[str, Any] = Field(default_factory=dict)
     evidence_refs: list[str] = Field(default_factory=list)

@@ -35,6 +35,7 @@ class ScopeInvestigation(BaseModel):
     tool_results: list[InvestigationToolResult] = Field(default_factory=list)
     termination: InvestigationTermination | None = None
     next_actions: list[str] = Field(default_factory=list)
+    round_count: int = 1
     steps: list[InvestigationStep] = Field(default_factory=list)
 
 
@@ -49,6 +50,7 @@ class InvestigationResult(BaseModel):
     overall_failure_point: str | None = None
     overall_root_cause: str | None = None
     overall_confidence: str = "low"
+    selected_scope_id: str | None = None
     warnings: list[str] = Field(default_factory=list)
     diagnoses: list[ScopeDiagnosis] = Field(default_factory=list)
     contexts: list[DiagnosisContext] = Field(default_factory=list)

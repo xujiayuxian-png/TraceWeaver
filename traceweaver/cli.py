@@ -94,6 +94,7 @@ def main() -> None:
 
     investigate_parser = subparsers.add_parser("investigate")
     investigate_parser.add_argument("pcap_path", type=Path)
+    investigate_parser.add_argument("--scope-id", type=str, default=None)
     _add_profile_args(investigate_parser)
     _add_llm_args(investigate_parser)
     _add_output_args(investigate_parser)
@@ -126,6 +127,7 @@ def main() -> None:
             payload = investigate_capture(
                 args.pcap_path,
                 profile=args.profile,
+                scope_id=args.scope_id,
                 llm_provider=_build_llm_provider(args),
                 options=_build_options(args),
             )

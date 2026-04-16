@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from traceweaver.models import ExtractedRecordSet, UESession
+from traceweaver.profiles.open5gs_5gc.domain.records import ExtractedRecordSet
+from traceweaver.profiles.open5gs_5gc.domain.sessions import UESession
 from traceweaver.profiles.open5gs_5gc.events.identify import detect_events_for_record
 
 TIME_WINDOW_SECONDS = 2.0

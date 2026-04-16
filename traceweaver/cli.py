@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from traceweaver.core import AnalysisOptions, analyze_capture, investigate_capture, list_profiles, list_scope_summaries
-from traceweaver.tshark import ExternalToolError
+from traceweaver.core.tshark import ExternalToolError
 
 
 def _add_output_args(parser: argparse.ArgumentParser) -> None:
@@ -19,7 +19,8 @@ def _add_profile_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--profile", type=str, default="open5gs_5gc")
     parser.add_argument("--display-filter", type=str, default=None)
     parser.add_argument("--decode-as", action="append", default=[])
-    parser.add_argument("--limit", type=int)
+    parser.add_argument("--limit", type=int, help="Maximum number of analysis scopes to return")
+    parser.add_argument("--record-limit", type=int, help="Maximum number of extracted records to read before scope assembly")
 
 
 def _add_llm_args(parser: argparse.ArgumentParser) -> None:
@@ -39,7 +40,8 @@ def _build_options(args: argparse.Namespace) -> AnalysisOptions:
     return AnalysisOptions(
         display_filter=getattr(args, "display_filter", None),
         decode_as=list(getattr(args, "decode_as", []) or []),
-        limit=getattr(args, "limit", None),
+        scope_limit=getattr(args, "limit", None),
+        record_limit=getattr(args, "record_limit", None),
     )
 
 

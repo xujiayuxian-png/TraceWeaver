@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from traceweaver.models import DiagnosticSignal, UESession
+from traceweaver.profiles.open5gs_5gc.domain.diagnosis import DiagnosticSignal
+from traceweaver.profiles.open5gs_5gc.domain.sessions import UESession
 
 SYSTEM_PROMPT = """\
 You are an expert 5G Core Network fault diagnosis engineer.

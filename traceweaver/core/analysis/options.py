@@ -8,4 +8,5 @@ class AnalysisOptions(BaseModel):
 
     display_filter: str | None = None
     decode_as: list[str] = Field(default_factory=list)
-    limit: int | None = None
+    scope_limit: int | None = None
+    record_limit: int | None = None

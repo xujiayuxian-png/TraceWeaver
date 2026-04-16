@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from traceweaver.models import DetectedEvent, ExtractedRecordSet, NormalizedRecord
+from traceweaver.profiles.open5gs_5gc.domain.events import DetectedEvent
+from traceweaver.profiles.open5gs_5gc.domain.records import ExtractedRecordSet, NormalizedRecord
 
 NAS_MM_EVENT_MAP = {
     65: "REGISTRATION_REQUEST",

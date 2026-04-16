@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import re
 
-from traceweaver.models import ExtractedRecordSet, PDUSessionFlow, PFCPFlow, UESession
+from traceweaver.profiles.open5gs_5gc.domain.pdu import PDUSessionFlow, PFCPFlow
+from traceweaver.profiles.open5gs_5gc.domain.records import ExtractedRecordSet
+from traceweaver.profiles.open5gs_5gc.domain.sessions import UESession
 from traceweaver.utils import parse_optional_int
 
 PDU_SBI_WINDOW_SECONDS = 2.0

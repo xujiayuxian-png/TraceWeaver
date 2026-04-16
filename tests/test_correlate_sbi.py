@@ -1,5 +1,6 @@
 from traceweaver.profiles.open5gs_5gc.assemble.sbi import correlate_sbi_to_sessions, pair_sbi_calls
-from traceweaver.models import ExtractedRecordSet, NormalizedRecord, UESession
+from traceweaver.profiles.open5gs_5gc.domain.records import ExtractedRecordSet, NormalizedRecord
+from traceweaver.profiles.open5gs_5gc.domain.sessions import UESession
 
 
 def _build_http2_record_set() -> ExtractedRecordSet:

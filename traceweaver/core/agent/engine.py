@@ -5,6 +5,7 @@ from pathlib import Path
 from traceweaver.core.agent.planner import InvestigationPlan, build_investigation_plan, evaluate_termination, reconsider_termination_with_llm
 from traceweaver.core.agent.result import InvestigationResult, InvestigationStep, ScopeInvestigation
 from traceweaver.core.agent.tools import InvestigationToolRegistry, InvestigationToolResult
+from traceweaver.core.analysis.engine import build_analysis_artifacts
 from traceweaver.core.analysis.options import AnalysisOptions
 from traceweaver.core.contracts import DiagnosisContext, ScopeDiagnosis
 from traceweaver.core.profile import get_profile
@@ -22,11 +23,14 @@ def investigate_capture(
 ) -> InvestigationResult:
     resolved_options = options or AnalysisOptions()
     profile_impl = get_profile(profile)
-    analysis_result, contexts = profile_impl.build_diagnosis_contexts(
+    artifacts = build_analysis_artifacts(
         str(path),
-        options=resolved_options,
+        profile=profile,
         llm_provider=llm_provider,
+        options=resolved_options,
     )
+    analysis_result = artifacts.result
+    contexts = artifacts.contexts
 
     diagnosis_index = {item.scope_id: item for item in analysis_result.diagnoses}
     if scope_id is not None:

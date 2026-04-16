@@ -3,47 +3,56 @@ from __future__ import annotations
 from pathlib import Path
 
 from traceweaver.core.analysis.options import AnalysisOptions
-from traceweaver.core.analysis.result import AnalysisResult
 from traceweaver.core.contracts import AnalysisScope, CaptureRecord, DiagnosisContext, DiagnosticSignal, EvidenceItem, ScopeDiagnosis, StructuredEvent, VisibilityAssessment
-from traceweaver.models import ExtractedRecordSet, NormalizedRecord, PDUSessionFlow, SessionDiagnosis, UESession
+from traceweaver.profiles.open5gs_5gc.domain.pdu import PDUSessionFlow
+from traceweaver.profiles.open5gs_5gc.domain.records import ExtractedRecordSet, NormalizedRecord
+from traceweaver.profiles.open5gs_5gc.domain.diagnosis import DiagnosticSignal as LegacyDiagnosticSignal
+from traceweaver.profiles.open5gs_5gc.domain.diagnosis import SessionDiagnosis
+from traceweaver.profiles.open5gs_5gc.domain.sessions import UESession
 from traceweaver.profiles.open5gs_5gc.investigation import build_investigation_tool_registry as build_tool_registry
 from traceweaver.profiles.open5gs_5gc.assemble import build_pdu_sessions_for_ue, correlate_pfcp_to_pdu, correlate_sbi_to_sessions, group_ue_sessions, pair_sbi_calls
 from traceweaver.profiles.open5gs_5gc.diagnosis import collect_signals, diagnose_session, llm_diagnose_session
 from traceweaver.profiles.open5gs_5gc.extract import extract_records
+from traceweaver.profiles.open5gs_5gc.runtime import Open5GSAnalysisRuntime
 
 
 class Open5GS5GCProfile:
     name = "open5gs_5gc"
     description = "Open5GS-oriented 5GC registration and PDU session diagnosis profile"
+    knowledge_refs = [
+        "open5gs_5gc:registration_chain",
+        "open5gs_5gc:sbi_correlation",
+        "open5gs_5gc:pfcp_visibility",
+    ]
 
-    def analyze_capture(
+    def extract(
         self,
         path: str,
         *,
         options: AnalysisOptions,
-        llm_provider=None,
-    ) -> AnalysisResult:
-        result, _ = self.build_diagnosis_contexts(
-            path,
-            options=options,
-            llm_provider=llm_provider,
-        )
-        return result
-
-    def build_diagnosis_contexts(
-        self,
-        path: str,
-        *,
-        options: AnalysisOptions,
-        llm_provider=None,
-    ) -> tuple[AnalysisResult, list[DiagnosisContext]]:
-        records = extract_records(
+    ) -> Open5GSAnalysisRuntime:
+        record_set = extract_records(
             Path(path),
             display_filter=options.display_filter,
             decode_as=options.decode_as or None,
-            limit=options.limit,
+            limit=options.record_limit,
         )
-        warnings = list(records.warnings)
+        return Open5GSAnalysisRuntime(
+            record_set=record_set,
+            warnings=list(record_set.warnings),
+        )
+
+    def build_scopes(
+        self,
+        runtime: Open5GSAnalysisRuntime,
+        *,
+        options: AnalysisOptions,
+    ) -> list[AnalysisScope]:
+        if options.scope_limit is not None and options.scope_limit <= 0:
+            raise ValueError("scope_limit must be > 0")
+
+        records = runtime.record_set
+        warnings = runtime.warnings
         sessions = group_ue_sessions(records, warnings=warnings)
         correlate_sbi_to_sessions(pair_sbi_calls(records), sessions, warnings=warnings)
 
@@ -52,30 +61,77 @@ class Open5GS5GCProfile:
             correlate_pfcp_to_pdu(records, session.pdu_sessions, warnings=warnings)
             session.pdu_session_count = len(session.pdu_sessions)
 
-        diagnoses = self._diagnose_sessions(records, sessions, warnings=warnings, llm_provider=llm_provider)
-        overall = _compute_overall_verdict(diagnoses)
+        if options.scope_limit is not None and len(sessions) > options.scope_limit:
+            warnings.append(
+                f"scope_limit_applied: returning {options.scope_limit} of {len(sessions)} assembled scopes"
+            )
+            sessions = sessions[: options.scope_limit]
 
-        scopes = [_scope_from_ue_session(session) for session in sessions]
-        scope_diagnoses = [_scope_diagnosis_from_legacy(item) for item in diagnoses]
-        contexts = [
-            _build_diagnosis_context(scope, session, records)
-            for scope, session in zip(scopes, sessions, strict=False)
-        ]
+        runtime.sessions = sessions
+        runtime.session_index = {session.session_id: session for session in sessions}
+        runtime.signal_cache = {}
+        return [_scope_from_ue_session(session) for session in sessions]
 
-        result = AnalysisResult(
-            path=records.path,
-            file_name=records.file_name,
-            profile_name=self.name,
-            scope_count=len(sessions),
-            overall_verdict=overall[0],
-            overall_failure_point=overall[1],
-            overall_root_cause=overall[2],
-            overall_confidence=overall[3],
-            warnings=warnings,
-            scopes=scopes,
-            diagnoses=scope_diagnoses,
-        )
-        return result, contexts
+    def annotate_signals(
+        self,
+        scope: AnalysisScope,
+        runtime: Open5GSAnalysisRuntime,
+        *,
+        options: AnalysisOptions,
+    ) -> list[DiagnosticSignal]:
+        session = runtime.session_index[scope.scope_id]
+        legacy_signals = collect_signals(session, runtime.record_set)
+        runtime.signal_cache[scope.scope_id] = legacy_signals
+        return [_signal_from_legacy(scope.scope_id, item) for item in legacy_signals]
+
+    def assess_visibility(
+        self,
+        scope: AnalysisScope,
+        runtime: Open5GSAnalysisRuntime,
+        signals: list[DiagnosticSignal],
+        *,
+        options: AnalysisOptions,
+    ) -> VisibilityAssessment:
+        session = runtime.session_index[scope.scope_id]
+        return _build_visibility(scope, signals, session=session, records=runtime.record_set)
+
+    def collect_evidence(
+        self,
+        scope: AnalysisScope,
+        runtime: Open5GSAnalysisRuntime,
+        signals: list[DiagnosticSignal],
+        visibility: VisibilityAssessment | None,
+        *,
+        options: AnalysisOptions,
+    ) -> list[EvidenceItem]:
+        session = runtime.session_index[scope.scope_id]
+        return _build_evidence(scope, session, signals)
+
+    def diagnose_scope(
+        self,
+        scope: AnalysisScope,
+        runtime: Open5GSAnalysisRuntime,
+        signals: list[DiagnosticSignal],
+        visibility: VisibilityAssessment | None,
+        *,
+        llm_provider=None,
+        options: AnalysisOptions,
+    ) -> ScopeDiagnosis:
+        _record_diagnosis_engine(runtime, llm_provider)
+        session = runtime.session_index[scope.scope_id]
+        legacy_signals = runtime.signal_cache.get(scope.scope_id)
+        if legacy_signals is None:
+            legacy_signals = collect_signals(session, runtime.record_set)
+            runtime.signal_cache[scope.scope_id] = legacy_signals
+
+        if llm_provider is not None:
+            diagnosis = llm_diagnose_session(session, legacy_signals, llm_provider)
+        else:
+            diagnosis = diagnose_session(session, legacy_signals)
+
+        if visibility is not None:
+            diagnosis = _apply_visibility_constraints(diagnosis, visibility)
+        return _scope_diagnosis_from_legacy(diagnosis)
 
     def build_investigation_tool_registry(
         self,
@@ -83,29 +139,6 @@ class Open5GS5GCProfile:
         diagnosis: ScopeDiagnosis | None,
     ):
         return build_tool_registry(context, diagnosis)
-
-    def _diagnose_sessions(
-        self,
-        records: ExtractedRecordSet,
-        sessions: list[UESession],
-        *,
-        warnings: list[str],
-        llm_provider=None,
-    ) -> list[SessionDiagnosis]:
-        if llm_provider is not None:
-            warnings.append(f"diagnosis_engine: llm ({llm_provider.config.model})")
-        else:
-            warnings.append("diagnosis_engine: rule")
-
-        diagnoses: list[SessionDiagnosis] = []
-        for session in sessions:
-            signals = collect_signals(session, records)
-            if llm_provider is not None:
-                diagnosis = llm_diagnose_session(session, signals, llm_provider)
-            else:
-                diagnosis = diagnose_session(session, signals)
-            diagnoses.append(diagnosis)
-        return diagnoses
 
 
 def _scope_from_ue_session(session: UESession) -> AnalysisScope:
@@ -209,29 +242,7 @@ def _scope_diagnosis_from_legacy(diagnosis: SessionDiagnosis) -> ScopeDiagnosis:
     )
 
 
-def _build_diagnosis_context(
-    scope: AnalysisScope,
-    session: UESession,
-    records: ExtractedRecordSet,
-) -> DiagnosisContext:
-    legacy_signals = collect_signals(session, records)
-    visibility = _build_visibility(scope, legacy_signals)
-    evidence = _build_evidence(scope, session, legacy_signals)
-    return DiagnosisContext(
-        profile_name="open5gs_5gc",
-        scope=scope,
-        signals=[_signal_from_legacy(scope.scope_id, item) for item in legacy_signals],
-        evidence=evidence,
-        visibility=visibility,
-        knowledge_refs=[
-            "open5gs_5gc:registration_chain",
-            "open5gs_5gc:sbi_correlation",
-            "open5gs_5gc:pfcp_visibility",
-        ],
-    )
-
-
-def _signal_from_legacy(scope_id: str, signal) -> DiagnosticSignal:
+def _signal_from_legacy(scope_id: str, signal: LegacyDiagnosticSignal) -> DiagnosticSignal:
     frame_number = signal.frame_number
     signal_id = f"{scope_id}:{signal.name}:{frame_number if frame_number is not None else 'na'}"
     return DiagnosticSignal(
@@ -249,8 +260,14 @@ def _signal_from_legacy(scope_id: str, signal) -> DiagnosticSignal:
     )
 
 
-def _build_visibility(scope: AnalysisScope, legacy_signals: list) -> VisibilityAssessment:
-    signal_names = {item.name for item in legacy_signals}
+def _build_visibility(
+    scope: AnalysisScope,
+    signals: list[DiagnosticSignal],
+    *,
+    session: UESession,
+    records: ExtractedRecordSet,
+) -> VisibilityAssessment:
+    signal_names = {item.name for item in signals}
     missing_segments: list[str] = []
     weak_links: list[str] = []
     warnings: list[str] = []
@@ -266,6 +283,9 @@ def _build_visibility(scope: AnalysisScope, legacy_signals: list) -> VisibilityA
         warnings.append("PFCP traffic not visible in capture")
     if "LOW_RECORD_COUNT" in signal_names:
         warnings.append("very small record set may indicate truncated capture")
+    if _scope_reaches_capture_tail(session, records):
+        weak_links.append("capture_tail")
+        warnings.append("capture ends immediately after scope evidence; success inference may be incomplete")
 
     completeness = "complete"
     if missing_segments:
@@ -282,10 +302,80 @@ def _build_visibility(scope: AnalysisScope, legacy_signals: list) -> VisibilityA
     )
 
 
+def _apply_visibility_constraints(
+    diagnosis: SessionDiagnosis,
+    visibility: VisibilityAssessment,
+) -> SessionDiagnosis:
+    notes = list(diagnosis.notes)
+    for warning in visibility.warnings:
+        note = f"visibility_warning: {warning}"
+        if note not in notes:
+            notes.append(note)
+
+    success_like_verdict = diagnosis.verdict in {"OK", "FAIL_THEN_OK"}
+    low_record_warning = any("truncated capture" in warning for warning in visibility.warnings)
+    capture_tail_warning = any("success inference may be incomplete" in warning for warning in visibility.warnings)
+    explicit_registration_success = "REGISTRATION_ACCEPT" in diagnosis.signal_names or "REGISTRATION_COMPLETE" in diagnosis.signal_names
+
+    if success_like_verdict and low_record_warning:
+        override_note = "visibility_override: success downgraded because capture may be truncated"
+        if override_note not in notes:
+            notes.append(override_note)
+        return diagnosis.model_copy(
+            update={
+                "verdict": "INCONCLUSIVE",
+                "failure_point": "UNKNOWN_DUE_TO_TRUNCATION",
+                "root_cause": "capture_stopped_early",
+                "confidence": "medium",
+                "notes": notes,
+            }
+        )
+
+    if success_like_verdict and capture_tail_warning and not explicit_registration_success:
+        override_note = "visibility_override: inferred success downgraded because capture ends at scope tail"
+        if override_note not in notes:
+            notes.append(override_note)
+        return diagnosis.model_copy(
+            update={
+                "verdict": "INCONCLUSIVE",
+                "failure_point": "UNKNOWN_DUE_TO_TRUNCATION",
+                "root_cause": "capture_ended_before_success_could_be_confirmed",
+                "confidence": "medium",
+                "notes": notes,
+            }
+        )
+
+    if success_like_verdict and visibility.completeness == "partial":
+        override_note = "visibility_override: success downgraded because capture is partial"
+        if override_note not in notes:
+            notes.append(override_note)
+        return diagnosis.model_copy(
+            update={
+                "verdict": "INCONCLUSIVE",
+                "failure_point": None,
+                "root_cause": "capture_missing_segments",
+                "confidence": "medium",
+                "notes": notes,
+            }
+        )
+
+    if notes != diagnosis.notes:
+        return diagnosis.model_copy(update={"notes": notes})
+
+    return diagnosis
+
+
+def _scope_reaches_capture_tail(session: UESession, records: ExtractedRecordSet) -> bool:
+    if not records.records or session.end_time_epoch is None:
+        return False
+    capture_end = records.records[-1].time_epoch
+    return abs(capture_end - session.end_time_epoch) <= 0.001
+
+
 def _build_evidence(
     scope: AnalysisScope,
     session: UESession,
-    legacy_signals: list,
+    signals: list[DiagnosticSignal],
 ) -> list[EvidenceItem]:
     evidence: list[EvidenceItem] = []
     if session.events:
@@ -327,20 +417,29 @@ def _build_evidence(
                 supports=["pdu_correlation"],
             )
         )
-    if legacy_signals:
+    if signals:
         evidence.append(
             EvidenceItem(
                 evidence_id=f"{scope.scope_id}:signal:summary",
                 scope_id=scope.scope_id,
                 source_type="signal_summary",
                 source_name="diagnostic_signals",
-                summary=f"{len(legacy_signals)} diagnostic signals extracted",
-                frame_numbers=[item.frame_number for item in legacy_signals if item.frame_number is not None],
-                attributes={"signal_names": [item.name for item in legacy_signals]},
+                summary=f"{len(signals)} diagnostic signals extracted",
+                frame_numbers=[item.frame_number for item in signals if item.frame_number is not None],
+                attributes={"signal_names": [item.name for item in signals]},
                 supports=["diagnostic_signal_set"],
             )
         )
     return evidence
+
+
+def _record_diagnosis_engine(runtime: Open5GSAnalysisRuntime, llm_provider) -> None:
+    if llm_provider is not None:
+        marker = f"diagnosis_engine: llm ({llm_provider.config.model})"
+    else:
+        marker = "diagnosis_engine: rule"
+    if marker not in runtime.warnings:
+        runtime.warnings.append(marker)
 
 
 def _signal_category(name: str) -> str:
@@ -368,38 +467,3 @@ def _connection_key(record: NormalizedRecord) -> str:
     src = f"{record.src_ip}:{record.src_port}" if record.src_ip and record.src_port is not None else (record.src_ip or "")
     dst = f"{record.dst_ip}:{record.dst_port}" if record.dst_ip and record.dst_port is not None else (record.dst_ip or "")
     return "|".join(item for item in sorted([src, dst]) if item)
-
-
-def _compute_overall_verdict(
-    diagnoses: list[SessionDiagnosis],
-) -> tuple[str, str | None, str | None, str]:
-    if not diagnoses:
-        return ("INCONCLUSIVE", None, None, "low")
-
-    if len(diagnoses) == 1:
-        d = diagnoses[0]
-        return (d.verdict, d.failure_point, d.root_cause, d.confidence)
-
-    verdicts = {d.verdict for d in diagnoses}
-
-    if verdicts == {"FAIL", "OK"} or verdicts == {"FAIL", "OK", "INCONCLUSIVE"}:
-        fail_diag = next(d for d in diagnoses if d.verdict == "FAIL")
-        return (
-            "FAIL_THEN_OK",
-            fail_diag.failure_point,
-            fail_diag.root_cause,
-            "high",
-        )
-
-    if verdicts == {"OK"}:
-        return ("OK", None, None, "high")
-
-    if "FAIL" in verdicts:
-        fail_diag = next(d for d in diagnoses if d.verdict == "FAIL")
-        return ("FAIL", fail_diag.failure_point, fail_diag.root_cause, fail_diag.confidence)
-
-    if verdicts == {"INCONCLUSIVE"}:
-        return ("INCONCLUSIVE", None, None, "low")
-
-    primary = diagnoses[0]
-    return (primary.verdict, primary.failure_point, primary.root_cause, primary.confidence)

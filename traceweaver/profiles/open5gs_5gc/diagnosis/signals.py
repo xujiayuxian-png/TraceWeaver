@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from traceweaver.models import DiagnosticSignal, ExtractedRecordSet, UESession
+from traceweaver.profiles.open5gs_5gc.domain.diagnosis import DiagnosticSignal
+from traceweaver.profiles.open5gs_5gc.domain.records import ExtractedRecordSet
+from traceweaver.profiles.open5gs_5gc.domain.sessions import UESession
 from traceweaver.utils import parse_optional_int
 
 PFCP_MSG_TYPE_NAMES: dict[int, str] = {

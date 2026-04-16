@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from traceweaver.models import DiagnosticSignal, SessionDiagnosis, UESession
+from traceweaver.profiles.open5gs_5gc.domain.diagnosis import DiagnosticSignal, SessionDiagnosis
+from traceweaver.profiles.open5gs_5gc.domain.sessions import UESession
 
 
 def diagnose_session(session: UESession, signals: list[DiagnosticSignal]) -> SessionDiagnosis:

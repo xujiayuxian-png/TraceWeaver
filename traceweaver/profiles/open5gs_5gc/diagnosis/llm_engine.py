@@ -5,7 +5,8 @@ import logging
 from traceweaver.llm.output import LLMDiagnosisOutput, parse_llm_diagnosis
 from traceweaver.llm.prompts import build_diagnosis_prompt
 from traceweaver.llm.provider import LLMProvider
-from traceweaver.models import DiagnosticSignal, SessionDiagnosis, UESession
+from traceweaver.profiles.open5gs_5gc.domain.diagnosis import DiagnosticSignal, SessionDiagnosis
+from traceweaver.profiles.open5gs_5gc.domain.sessions import UESession
 from traceweaver.profiles.open5gs_5gc.diagnosis.engine import diagnose_session as rule_diagnose_session
 
 logger = logging.getLogger(__name__)

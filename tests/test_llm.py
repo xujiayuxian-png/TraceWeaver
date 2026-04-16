@@ -10,7 +10,8 @@ from traceweaver import analyze_capture
 from traceweaver.llm.output import LLMDiagnosisOutput, parse_llm_diagnosis
 from traceweaver.llm.prompts import build_diagnosis_prompt, format_signals, format_timeline
 from traceweaver.llm.provider import LLMConfig, LLMProvider, _extract_json, _should_disable_thinking, infer_model_tier
-from traceweaver.models import DiagnosticSignal, UESession
+from traceweaver.profiles.open5gs_5gc.domain.diagnosis import DiagnosticSignal
+from traceweaver.profiles.open5gs_5gc.domain.sessions import UESession
 
 FIXTURES = Path(__file__).parent / "fixtures" / "pcap"
 

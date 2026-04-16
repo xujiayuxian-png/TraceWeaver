@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from traceweaver.models import CaptureInspection, ProtocolPresence, ToolingInfo
-from traceweaver.tshark import (
+from traceweaver.core.tshark import (
     get_capinfos_version,
     get_tshark_version,
     has_matching_frames,

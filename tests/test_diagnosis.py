@@ -5,8 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from traceweaver import analyze_capture
-from traceweaver.models import DiagnosticSignal, UESession
+from traceweaver import AnalysisOptions, analyze_capture
+from traceweaver.profiles.open5gs_5gc.domain.diagnosis import DiagnosticSignal
+from traceweaver.profiles.open5gs_5gc.domain.sessions import UESession
 from traceweaver.profiles.open5gs_5gc.diagnosis.engine import diagnose_session
 from traceweaver.profiles.open5gs_5gc.diagnosis.signals import collect_signals
 
@@ -15,7 +16,7 @@ EXPECTED_PATH = Path(__file__).parent / "fixtures" / "expected_diagnosis.json"
 
 
 def _load_expected() -> dict[str, dict]:
-    data = json.loads(EXPECTED_PATH.read_text())
+    data = json.loads(EXPECTED_PATH.read_text(encoding="utf-8"))
     return {item["scenario_id"]: item for item in data["items"]}
 
 
@@ -226,6 +227,22 @@ class TestSpecificScenarios:
     def test_15_partial_visibility(self) -> None:
         report = _analyze_capture(FIXTURES / "15_partial_visibility_multi_host.pcapng")
         assert report.overall_verdict == "INCONCLUSIVE"
+
+    def test_16_truncated_capture(self) -> None:
+        report = _analyze_capture(FIXTURES / "16_truncated_or_lossy_capture.pcapng")
+        assert report.overall_verdict == "INCONCLUSIVE"
+        assert any("visibility_override" in note for diagnosis in report.diagnoses for note in diagnosis.notes)
+
+    def test_scope_limit_applies_after_session_assembly(self) -> None:
+        report = analyze_capture(
+            FIXTURES / "09_multi_ue_concurrent.pcapng",
+            profile="open5gs_5gc",
+            options=AnalysisOptions(scope_limit=1),
+        )
+        assert report.scope_count == 1
+        assert len(report.scopes) == 1
+        assert len(report.diagnoses) == 1
+        assert any("scope_limit_applied" in warning for warning in report.warnings)
 
 
 class TestDiagnosisEngineUnit:

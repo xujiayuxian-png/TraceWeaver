@@ -3,7 +3,9 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 
-from traceweaver.models import ExtractedRecordSet, SBICall, UESession
+from traceweaver.profiles.open5gs_5gc.domain.records import ExtractedRecordSet
+from traceweaver.profiles.open5gs_5gc.domain.sbi import SBICall
+from traceweaver.profiles.open5gs_5gc.domain.sessions import UESession
 from traceweaver.utils import parse_optional_int
 
 TIME_WINDOW_SECONDS = 2.0

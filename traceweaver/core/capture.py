@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from traceweaver.models import CaptureInspection, ProtocolPresence, ToolingInfo
+from pydantic import BaseModel, ConfigDict, Field
+
 from traceweaver.core.tshark import (
     get_capinfos_version,
     get_tshark_version,
@@ -14,6 +15,41 @@ from traceweaver.core.tshark import (
 SUPPORTED_CAPTURE_SUFFIXES = {".pcap", ".pcapng"}
 MINIMUM_RECOMMENDED_TSHARK_VERSION = "4.0.0"
 HTTP2_DECODE_AS_RULE = "tcp.port==7777,http2"
+
+
+class ProtocolPresence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ngap: bool
+    nas_5gs: bool
+    http2: bool
+    http2_forced_on_7777: bool
+    pfcp: bool
+
+
+class ToolingInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tshark_version: str
+    capinfos_version: str
+    tshark_minimum_recommended: str
+    tshark_meets_minimum_recommended: bool
+
+
+class CaptureInspection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    file_name: str
+    file_size_bytes: int
+    packet_count: int
+    duration_seconds: float
+    start_time_epoch: float
+    end_time_epoch: float
+    protocols: ProtocolPresence
+    recommended_decode_as: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    tooling: ToolingInfo
 
 
 def _validate_capture_path(path: Path) -> Path:

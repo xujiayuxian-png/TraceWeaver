@@ -35,6 +35,18 @@ class ProfileKnowledgeItem(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class ProfileEnricherSpec(BaseModel):
+    """One `{module, function}` entry from `profile.yaml:enrichers`."""
+
+    model_config = ConfigDict(frozen=True)
+
+    module: str
+    function: str
+
+    def ref(self) -> str:
+        return f"{self.module}:{self.function}"
+
+
 class Profile(BaseModel):
     """
     A fully-resolved profile. All file paths are absolute; all referenced
@@ -65,10 +77,20 @@ class Profile(BaseModel):
 
     tools: list[dict[str, Any]] = Field(default_factory=list)
     """
-    Raw `{module, class, ...}` entries. Tool loading happens in a later
-    M; we preserve the declaration here so profile round-trips stay
-    faithful.
+    Raw `{module, class, ...}` entries consumed by the tool loader
+    (`traceweaver.core.tools.loader`).
+    """
+
+    enrichers: list[ProfileEnricherSpec] = Field(default_factory=list)
+    """
+    Ordered list of record enrichers. Resolved at runtime by
+    `traceweaver.core.profile.runtime.ingest_for_profile`.
     """
 
 
-__all__ = ["Profile", "ProfileKnowledgeItem", "ProfileLLMConfig"]
+__all__ = [
+    "Profile",
+    "ProfileEnricherSpec",
+    "ProfileKnowledgeItem",
+    "ProfileLLMConfig",
+]

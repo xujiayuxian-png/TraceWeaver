@@ -19,6 +19,7 @@ import yaml
 
 from traceweaver.core.profile.base import (
     Profile,
+    ProfileEnricherSpec,
     ProfileKnowledgeItem,
     ProfileLLMConfig,
 )
@@ -61,6 +62,8 @@ def load_profile_from_dir(path: Path | str) -> Profile:
     if not isinstance(tools_decl, list):
         raise ValueError(f"{yaml_path}: 'tools' must be a list")
 
+    enrichers = _build_enrichers(raw.get("enrichers") or [], yaml_path)
+
     return Profile(
         name=name,
         version=str(raw.get("version", "0.0")),
@@ -73,7 +76,33 @@ def load_profile_from_dir(path: Path | str) -> Profile:
         llm=llm_cfg,
         knowledge=knowledge_items,
         tools=list(tools_decl),
+        enrichers=enrichers,
     )
+
+
+def _build_enrichers(
+    block: list[Any], yaml_path: Path
+) -> list[ProfileEnricherSpec]:
+    if not isinstance(block, list):
+        raise ValueError(f"{yaml_path}: 'enrichers' must be a list")
+    out: list[ProfileEnricherSpec] = []
+    for idx, entry in enumerate(block):
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"{yaml_path}: enrichers[{idx}] must be a mapping"
+            )
+        module = entry.get("module")
+        function = entry.get("function")
+        if not isinstance(module, str) or not module:
+            raise ValueError(
+                f"{yaml_path}: enrichers[{idx}].module is required"
+            )
+        if not isinstance(function, str) or not function:
+            raise ValueError(
+                f"{yaml_path}: enrichers[{idx}].function is required"
+            )
+        out.append(ProfileEnricherSpec(module=module, function=function))
+    return out
 
 
 def _build_llm(block: dict[str, Any], root: Path, yaml_path: Path) -> ProfileLLMConfig:

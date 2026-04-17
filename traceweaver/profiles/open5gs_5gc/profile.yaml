@@ -1,0 +1,81 @@
+name: open5gs_5gc
+version: "0.1"
+display_name: "Open5GS 5GC (NAS / NGAP / SBI / PFCP)"
+description: >
+  Diagnosis profile for Open5GS 5G core captures. Covers NGAP/NAS on
+  the radio path, SBI (HTTP/2) between AMF/SMF/AUSF/UDM, and PFCP
+  between SMF and UPF. Baseline model: Qwen3.5-9B on LM Studio.
+
+applies_to_sources:
+  - pcap
+
+source_config:
+  pcap:
+    display_filter: "ngap || nas-5gs || http2 || pfcp"
+    decode_as:
+      - "tcp.port==7777,http2"
+    fields:
+      - "frame.protocols"
+      - "ip.src"
+      - "ip.dst"
+      - "ipv6.src"
+      - "ipv6.dst"
+      - "tcp.srcport"
+      - "tcp.dstport"
+      - "tcp.stream"
+      - "sctp.srcport"
+      - "sctp.dstport"
+      - "ngap.procedureCode"
+      - "ngap.RAN_UE_NGAP_ID"
+      - "ngap.AMF_UE_NGAP_ID"
+      - "ngap.pDUSessionID"
+      - "nas-5gs.mm.message_type"
+      - "nas-5gs.mm.5gmm_cause"
+      - "nas-5gs.sm.message_type"
+      - "nas-5gs.sm.5gsm_cause"
+      - "nas-5gs.mm.type_of_identity"
+      - "nas-5gs.pdu_session_id"
+      - "http2.headers.method"
+      - "http2.headers.path"
+      - "http2.headers.status"
+      - "http2.headers.host"
+      - "http2.headers.authority"
+      - "http2.streamid"
+      - "pfcp.msg_type"
+      - "pfcp.seid"
+      - "pfcp.cause"
+    key_strategy:
+      mode: "derived_fields"
+      fields:
+        - "ngap.RAN_UE_NGAP_ID"
+        - "ngap.AMF_UE_NGAP_ID"
+
+enrichers:
+  - module: traceweaver.profiles.open5gs_5gc.enrich
+    function: enrich
+
+tools:
+  - module: traceweaver.profiles.open5gs_5gc.tools.list_ue_sessions
+    class: ListUESessionsTool
+  - module: traceweaver.profiles.open5gs_5gc.tools.get_ue_timeline
+    class: GetUETimelineTool
+  - module: traceweaver.profiles.open5gs_5gc.tools.get_sbi_calls
+    class: GetSBICallsTool
+  - module: traceweaver.profiles.open5gs_5gc.tools.get_pfcp_exchanges
+    class: GetPFCPExchangesTool
+  - module: traceweaver.profiles.open5gs_5gc.tools.get_nas_cause_meaning
+    class: GetNasCauseMeaningTool
+
+knowledge:
+  - file: knowledge/5gmm_causes.md
+    tags: ["nas", "5gmm", "cause"]
+  - file: knowledge/5gsm_causes.md
+    tags: ["nas", "5gsm", "cause"]
+  - file: knowledge/procedures.md
+    tags: ["procedure", "registration", "pdu_session"]
+
+llm:
+  system_prompt_file: prompts/system.md
+  response_schema_file: schema/diagnosis.json
+  max_rounds: 8
+  recommended_model: "openai/qwen/qwen3.5-9b"

@@ -13,13 +13,21 @@ from traceweaver.core.source.base import (
     SourceHandle,
     SourceSpec,
 )
+from traceweaver.core.source.enrich import (
+    Enricher,
+    EnrichedSourceHandle,
+    apply_enrichers,
+)
 from traceweaver.core.source.registry import SourceRegistry, get_default_registry
 
 __all__ = [
+    "EnrichedSourceHandle",
+    "Enricher",
     "Record",
     "Source",
     "SourceHandle",
     "SourceRegistry",
     "SourceSpec",
+    "apply_enrichers",
     "get_default_registry",
 ]

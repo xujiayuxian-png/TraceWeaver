@@ -4,29 +4,18 @@ build-backend = "hatchling.build"
 
 [project]
 name = "traceweaver"
-version = "0.0.0"
-description = "An LLM-first, pluggable platform for pcap and log analysis"
+version = "0.1.0"
+description = "TraceWeaver MVP foundation for 5GC/Open5GS packet analysis"
+readme = "plan/5gc-mvp-roadmap.md"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.8,<3",
     "litellm>=1.40",
-    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8,<9",
-]
-case-memory = [
-    "chromadb>=0.4",
-    "sentence-transformers>=2.2",
-]
-mcp-server = [
-    "mcp>=1.0",
-]
-http-server = [
-    "fastapi>=0.110",
-    "uvicorn>=0.29",
 ]
 
 [project.scripts]

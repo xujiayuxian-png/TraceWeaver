@@ -83,6 +83,13 @@ DEFAULT_MODEL = os.environ.get("TW_VALIDATE_MODEL", "ollama/qwen3.5:9b")
 DEFAULT_API_BASE = os.environ.get("OLLAMA_API_BASE", "http://127.0.0.1:11434")
 DEFAULT_MAX_ROUNDS = int(os.environ.get("TW_VALIDATE_ROUNDS", "5"))
 
+# 每个 provider 默认连的 base URL；用户显式传 --api-base 会覆盖
+PROVIDER_DEFAULT_API_BASE = {
+    "ollama": "http://127.0.0.1:11434",
+    "lm_studio": "http://127.0.0.1:1234/v1",
+    # openai/* 前缀如果配合本地兼容服务，需要用户显式 --api-base 覆盖
+}
+
 # 每个任务跑几次取多数
 ATTEMPTS_PER_TASK = 3
 PASS_THRESHOLD = 2  # 3 次里通过 >=2 次算该任务通过
@@ -215,6 +222,84 @@ MOCK_DATA = {
 }
 
 
+def _extract_tool_calls_from_text(text: str) -> list[dict]:
+    """
+    v2 Layer 4 适配器归一化：
+    某些 provider（典型：LM Studio 非 Native 列表里的模型，如 Qwen3 系列）
+    不会把模型训练原生的 <tool_call>...</tool_call> 文本翻译为 OpenAI
+    结构化 tool_calls 字段，而是放进 content / reasoning_content。
+    本函数把这类泄漏的 tool call 提取为规范化字典列表。
+
+    支持两种内部格式（都包在 <tool_call>...</tool_call> 里）：
+      1. JSON 形式：{"name": "X", "arguments": {...}}
+      2. XML 形式 ：<function=X><parameter=K>V</parameter>...</function>
+
+    返回 [{"name": str, "arguments": dict}, ...]
+    """
+    import re
+
+    if not text or "<tool_call>" not in text:
+        return []
+
+    param_types: dict[str, dict[str, str]] = {}
+    for t in TOOLS_SPEC:
+        fn = t.get("function", {})
+        tn = fn.get("name")
+        props = fn.get("parameters", {}).get("properties", {})
+        if tn:
+            param_types[tn] = {k: v.get("type", "string") for k, v in props.items()}
+
+    results: list[dict] = []
+    for block in re.findall(r"<tool_call>\s*(.*?)\s*</tool_call>", text, re.DOTALL):
+        block = block.strip()
+
+        # 1) JSON form
+        try:
+            parsed = json.loads(block)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict) and "name" in parsed:
+            args_val = parsed.get("arguments", {})
+            if isinstance(args_val, str):
+                try:
+                    args_val = json.loads(args_val)
+                except json.JSONDecodeError:
+                    pass
+            if not isinstance(args_val, dict):
+                args_val = {}
+            results.append({"name": parsed["name"], "arguments": args_val})
+            continue
+
+        # 2) XML form
+        fn_match = re.search(r"<function=([\w.\-]+)>", block)
+        if not fn_match:
+            continue
+        tool_name = fn_match.group(1)
+        args: dict[str, Any] = {}
+        for pm in re.finditer(
+            r"<parameter=([\w.\-]+)>\s*(.*?)\s*</parameter>", block, re.DOTALL
+        ):
+            key, raw = pm.group(1), pm.group(2).strip()
+            expected = param_types.get(tool_name, {}).get(key, "string")
+            coerced: Any = raw
+            if expected == "integer":
+                try:
+                    coerced = int(raw)
+                except ValueError:
+                    pass
+            elif expected == "number":
+                try:
+                    coerced = float(raw)
+                except ValueError:
+                    pass
+            elif expected == "boolean":
+                coerced = raw.lower() in ("true", "1", "yes")
+            args[key] = coerced
+        results.append({"name": tool_name, "arguments": args})
+
+    return results
+
+
 def execute_tool(name: str, args: dict) -> dict:
     """模拟工具执行。"""
     if name == "get_session_count":
@@ -232,7 +317,8 @@ def execute_tool(name: str, args: dict) -> dict:
     if name == "search_knowledge":
         q = (args.get("query") or "").lower()
         for key, val in MOCK_DATA["knowledge"].items():
-            if key in q:
+            key_tokens = [t for t in key.lower().split() if t]
+            if key_tokens and all(t in q for t in key_tokens):
                 return {"result": val}
         return {"result": "no matching entry"}
     if name == "echo":
@@ -285,19 +371,32 @@ def _called_tool_with_valid_args(
 
 
 def check_t1(trace, final_content):
-    if not _has_tool_call(trace, "get_session_count"):
+    total = _count_tool_calls(trace)
+    if total == 0:
         return False, "expected to call get_session_count"
     if _has_tool_call(trace, "echo"):
         return False, "should not call echo tool"
+    if not _has_tool_call(trace, "get_session_count"):
+        return False, "the call should be get_session_count"
+    if total > 1:
+        names = [c["name"] for e in trace for c in e.get("tool_calls", [])]
+        return False, f"expected exactly 1 tool call (just get_session_count), got {total}: {names}"
+    text = final_content if isinstance(final_content, str) else json.dumps(final_content, ensure_ascii=False)
+    if "2" not in text:
+        return False, f"final answer should mention the count (2), got: {text[:200]}"
     return True, "ok"
 
 
 def check_t2(trace, final_content):
+    if _has_tool_call(trace, "echo"):
+        return False, "should NOT call echo tool to emit the final JSON"
     if not isinstance(final_content, dict):
         return False, f"final output is not a dict: {type(final_content).__name__}"
     verdict = final_content.get("verdict")
     if verdict not in ["OK", "FAIL", "INCONCLUSIVE"]:
         return False, f"verdict not in enum: {verdict}"
+    if verdict != "FAIL":
+        return False, f"expected verdict=FAIL (session 0 has AUTHENTICATION_FAILURE), got {verdict}"
     if "reason" not in final_content:
         return False, "missing reason field"
     return True, "ok"
@@ -307,16 +406,15 @@ def check_t3(trace, final_content):
     if not _has_tool_call(trace, "get_session_count"):
         return False, "expected to call get_session_count first"
     if not _called_tool_with_valid_args(
-        trace, "get_session_info", lambda args: isinstance(args.get("session_index"), int)
+        trace, "get_session_info", lambda args: args.get("session_index") == 1
     ):
-        return False, "expected to call get_session_info with integer session_index"
+        return False, "expected to call get_session_info with session_index=1 (the last session)"
     return True, "ok"
 
 
 def check_t4(trace, final_content):
     if _has_tool_call(trace, "echo"):
         return False, "should NOT call echo tool (it's marked as debug-only)"
-    # Should call something useful
     useful_tools = {"get_session_count", "get_session_info", "get_frame_at", "search_knowledge"}
     any_useful = any(
         call["name"] in useful_tools
@@ -337,6 +435,15 @@ def check_t5(trace, final_content):
         return False, "final output is not a dict"
     if final_content.get("verdict") != "FAIL":
         return False, f"expected verdict=FAIL, got {final_content.get('verdict')}"
+    if final_content.get("cause_code") != 20:
+        return False, f"expected cause_code=20, got {final_content.get('cause_code')}"
+    explanation = (final_content.get("explanation") or "").lower()
+    # search_knowledge 明确返回 "MAC failure"; explanation 若没提 MAC 就是没 ground 在工具返回上
+    if "mac" not in explanation:
+        return False, (
+            "explanation not grounded in search_knowledge result "
+            f"(missing 'MAC'): {explanation[:180]}"
+        )
     return True, "ok"
 
 
@@ -356,8 +463,9 @@ TASKS = [
         name="T2_structured_output",
         description="Return structured JSON per schema",
         system_prompt=(
-            "You are a pcap analyzer. Use tools to investigate, then output a final "
-            "structured verdict."
+            "You are a pcap analyzer. Use tools to investigate, then output the final "
+            "structured verdict as a plain JSON object in your assistant message content. "
+            "Do NOT call any tool to emit the final JSON — write it directly as your answer."
         ),
         user_prompt=(
             "Check session at index 0 and tell me if registration succeeded or failed. "
@@ -399,7 +507,9 @@ TASKS = [
         description="Compound: frame lookup + knowledge lookup + structured output",
         system_prompt=(
             "You are a 5G Core diagnosis expert. Use tools to investigate, then output "
-            "a structured verdict."
+            "the final structured verdict as a plain JSON object in your assistant message "
+            "content. Do NOT call any tool to emit the final JSON — write it directly as "
+            "your answer."
         ),
         user_prompt=(
             "Frame 42 contains an authentication failure. Look up the frame, look up "
@@ -459,7 +569,6 @@ def run_tool_calling_loop(
         "model": model,
         "messages": messages,
         "tools": TOOLS_SPEC,
-        "tool_choice": "auto",
         "temperature": 0.0,
     }
     if api_base:
@@ -467,6 +576,12 @@ def run_tool_calling_loop(
     if model.startswith("ollama/"):
         # qwen3 系列默认会开 thinking，OpenAI 兼容接口会返回空 content，v1 验证过要关掉
         kwargs["extra_body"] = {"think": False}
+    elif model.startswith(("openai/", "lm_studio/")):
+        # litellm openai provider 要求一个 key；本地兼容服务不校验内容
+        kwargs["api_key"] = os.environ.get("OPENAI_API_KEY", "local-no-key")
+        if "qwen3" in model.lower():
+            # Qwen3 家族默认走 thinking 模式；关掉让它直接输出（chat template 需支持）
+            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
 
     for round_idx in range(1, max_rounds + 1):
         try:
@@ -485,12 +600,43 @@ def run_tool_calling_loop(
 
         msg = resp.choices[0].message
         tool_calls = getattr(msg, "tool_calls", None) or []
+        reasoning_text = (
+            getattr(msg, "reasoning_content", None)
+            or getattr(msg, "reasoning", None)
+            or ""
+        )
+        msg_content = getattr(msg, "content", "") or ""
 
         entry: dict[str, Any] = {
             "round": round_idx,
-            "assistant_content": getattr(msg, "content", "") or "",
+            "assistant_content": msg_content,
+            "reasoning_content": reasoning_text,
             "tool_calls": [],
         }
+
+        # v2 Layer 4 归一化兜底：API 没给 tool_calls 但原文里漏出 <tool_call> XML
+        extracted: list[dict] = []
+        if not tool_calls:
+            for src in (msg_content, reasoning_text):
+                extracted = _extract_tool_calls_from_text(src)
+                if extracted:
+                    break
+        if extracted:
+            import uuid
+            from types import SimpleNamespace
+
+            tool_calls = [
+                SimpleNamespace(
+                    id=f"extracted-{uuid.uuid4().hex[:10]}",
+                    type="function",
+                    function=SimpleNamespace(
+                        name=ec["name"],
+                        arguments=json.dumps(ec["arguments"], ensure_ascii=False),
+                    ),
+                )
+                for ec in extracted
+            ]
+            entry["_extracted_from_text"] = True
 
         if tool_calls:
             assistant_msg: dict[str, Any] = {
@@ -547,7 +693,6 @@ def run_tool_calling_loop(
 
             trace.append(entry)
             kwargs["messages"] = messages
-            # 如果需要 JSON，在最后一轮前注入 response_format 约束
             continue
 
         # 没有 tool_calls → 最终输出
@@ -556,11 +701,21 @@ def run_tool_calling_loop(
         entry["final_content_raw"] = content_text
         trace.append(entry)
 
+        # 某些 provider（LM Studio 上的 Qwen3 / 任何带 reasoning 的模型）会把最终答案的文本
+        # 放在 content 里，但把 JSON 之类结构化输出夹在 reasoning_content 里。
+        # Kernel 兜底：content 没有可用值就回落到 reasoning_content。
+        def _effective_text() -> str:
+            if content_text:
+                return content_text
+            return reasoning_text.strip()
+
         if task.require_json:
             parsed = _parse_json_from_text(content_text)
+            if parsed is None and reasoning_text:
+                parsed = _parse_json_from_text(reasoning_text)
             final_content = parsed
         else:
-            final_content = content_text
+            final_content = _effective_text()
         break
     else:
         return AttemptResult(
@@ -626,25 +781,37 @@ def _parse_json_from_text(text: str) -> Any:
 
 
 def main() -> int:
+    # Windows PowerShell 默认 GBK，打印 unicode 符号会崩；强制 stdout UTF-8
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", default=DEFAULT_MODEL, help=f"default: {DEFAULT_MODEL}")
-    parser.add_argument("--api-base", default=DEFAULT_API_BASE, help=f"default: {DEFAULT_API_BASE}")
+    parser.add_argument(
+        "--api-base",
+        default=None,
+        help="Override API base URL (auto-picked by provider prefix if omitted)",
+    )
     parser.add_argument("--max-rounds", type=int, default=DEFAULT_MAX_ROUNDS)
     parser.add_argument("--attempts", type=int, default=ATTEMPTS_PER_TASK)
     parser.add_argument("--output-dir", default=".traceweaver", help="Where to write report JSON")
     args = parser.parse_args()
 
+    provider = args.model.split("/", 1)[0] if "/" in args.model else ""
+    api_base = args.api_base or PROVIDER_DEFAULT_API_BASE.get(provider)
+
     print(f"{'=' * 72}")
     print(f"TraceWeaver v2 Tool Calling 基线验证")
     print(f"{'=' * 72}")
     print(f"Model:      {args.model}")
-    print(f"API base:   {args.api_base if args.model.startswith('ollama/') else '(N/A for non-ollama)'}")
+    print(f"API base:   {api_base or '(provider default)'}")
     print(f"Max rounds: {args.max_rounds}")
     print(f"Attempts:   {args.attempts} per task")
     print(f"Pass gate:  {PASS_THRESHOLD}/{args.attempts} attempts per task; all {MIN_TASKS_PASSED} tasks must pass")
     print(f"{'=' * 72}\n")
-
-    api_base = args.api_base if args.model.startswith("ollama/") else None
 
     all_results: list[AttemptResult] = []
     task_pass_status: dict[str, bool] = {}

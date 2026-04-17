@@ -1,0 +1,33 @@
+name: minimal
+version: "1.0"
+display_name: "Minimal test profile"
+description: "Used by tests/core and scripts/run_m2_smoke.py"
+
+applies_to_sources: [fake, pcap]
+
+source_config:
+  fake:
+    # FakeSource reads records_object / records from options; tests
+    # usually override this block programmatically. The YAML value here
+    # just proves the loader preserves arbitrary nested mappings.
+    notes: "records are injected by the test"
+  pcap:
+    display_filter: "ip"
+    fields:
+      - ip.src
+      - ip.dst
+    key_strategy:
+      mode: derived_fields
+      fields: [ip.src, ip.dst]
+
+scope:
+  strategy: single
+
+llm:
+  system_prompt_file: prompts/system.md
+  max_rounds: 6
+  recommended_model: openai/qwen/qwen3.5-9b
+
+knowledge:
+  - file: knowledge/sample.md
+    tags: [sample, test]

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from traceweaver.profiles.open5gs_5gc.domain.diagnosis import DiagnosticSignal
-from traceweaver.profiles.open5gs_5gc.domain.sessions import UESession
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from traceweaver.profiles.open5gs_5gc.domain.diagnosis import DiagnosticSignal
+    from traceweaver.profiles.open5gs_5gc.domain.sessions import UESession
 
 SYSTEM_PROMPT = """\
 You are an expert 5G Core Network fault diagnosis engineer.
@@ -42,7 +45,7 @@ Output ONLY a JSON object with this exact structure (no markdown, no explanation
 }"""
 
 
-def format_timeline(session: UESession) -> str:
+def format_timeline(session: Any) -> str:
     lines: list[str] = []
     lines.append(f"## UE Session: {session.session_id}")
     if session.ran_ue_ngap_id:
@@ -93,7 +96,7 @@ def format_timeline(session: UESession) -> str:
     return "\n".join(lines)
 
 
-def format_signals(signals: list[DiagnosticSignal]) -> str:
+def format_signals(signals: list[Any]) -> str:
     if not signals:
         return "No signals detected."
 
@@ -110,8 +113,8 @@ def format_signals(signals: list[DiagnosticSignal]) -> str:
 
 
 def build_diagnosis_prompt(
-    session: UESession,
-    signals: list[DiagnosticSignal],
+    session: Any,
+    signals: list[Any],
     model_tier: str,
 ) -> tuple[str, str]:
     timeline_text = format_timeline(session)

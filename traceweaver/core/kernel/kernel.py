@@ -68,6 +68,10 @@ class _LoopState:
     messages: list[Message] = field(default_factory=list)
     events: list[TraceEvent] = field(default_factory=list)
     schema_retries: int = 0
+    # Canonical (tool_name, args_json) -> round first executed.
+    # Used to short-circuit identical repeat calls so a small LLM
+    # cannot burn its round budget looping on the same query.
+    seen_calls: dict[tuple[str, str], int] = field(default_factory=dict)
 
     def append_message(self, msg: Message) -> None:
         self.messages.append(msg)
@@ -105,13 +109,36 @@ class AgentKernel:
         state = _LoopState(messages=[Message(role="user", content=user_request)])
         tools_spec = self.registry.specs()
 
+        # Reserve the last two rounds for finalization: strip tools from
+        # the request so a weak model cannot keep looping on tool calls
+        # when the budget is nearly exhausted. First time we enter the
+        # window we also inject a clear user nudge.
+        finalize_from = max(1, task.max_rounds - 1)
+        finalize_nudged = False
+
         for round_idx in range(1, task.max_rounds + 1):
+            in_finalize_window = round_idx >= finalize_from
+            tools_for_round = [] if in_finalize_window else tools_spec
+            if in_finalize_window and not finalize_nudged:
+                state.append_message(
+                    Message(
+                        role="user",
+                        content=(
+                            "You have used most of your tool-call budget. "
+                            "Do NOT request any more tools. Return the final "
+                            "JSON verdict now, using the evidence already in "
+                            "your context."
+                        ),
+                    )
+                )
+                finalize_nudged = True
+
             try:
                 resp = self.intelligence.think(
                     IntelligenceRequest(
                         system_prompt=task.system_prompt,
                         messages=list(state.messages),
-                        tools=tools_spec,
+                        tools=tools_for_round,
                         response_schema=task.response_schema,
                     )
                 )
@@ -255,7 +282,21 @@ class AgentKernel:
 
         executions: list[ToolExecution] = []
         for call in resp.tool_calls:
-            execution = self._execute_tool(call, task, ctx)
+            dup_round = _seen_key_round(state, call, round_idx)
+            if dup_round is not None:
+                execution = ToolExecution(
+                    call=call,
+                    ok=False,
+                    error=(
+                        f"duplicate_call: tool '{call.name}' was already "
+                        f"executed in round {dup_round} with identical "
+                        "arguments; its result is already in your context. "
+                        "Do NOT call it again — finalize your diagnosis now "
+                        "using the evidence you already have."
+                    ),
+                )
+            else:
+                execution = self._execute_tool(call, task, ctx)
             executions.append(execution)
             state.append_message(
                 Message(
@@ -326,6 +367,30 @@ class AgentKernel:
             trace=AgentTrace(events=state.events),
             error=error,
         )
+
+
+def _canonical_args(args: dict[str, Any] | None) -> str:
+    """Stable JSON for duplicate-call detection."""
+    import json as _json
+
+    return _json.dumps(args or {}, ensure_ascii=False, sort_keys=True)
+
+
+def _seen_key_round(
+    state: _LoopState,
+    call: ToolCall,
+    round_idx: int,
+) -> int | None:
+    """
+    Record the call in `state.seen_calls`. Return the round in which
+    this exact (name, args) was FIRST seen if it is a repeat, else None.
+    """
+    key = (call.name, _canonical_args(call.arguments))
+    prior = state.seen_calls.get(key)
+    if prior is not None:
+        return prior
+    state.seen_calls[key] = round_idx
+    return None
 
 
 def _schema_missing_keys(

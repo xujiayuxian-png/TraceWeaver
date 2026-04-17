@@ -301,6 +301,15 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="openai/qwen/qwen3.5-9b")
     ap.add_argument("--api-base", default="http://127.0.0.1:1234/v1")
+    ap.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help=(
+            "Sampling temperature. Local Qwen: 0.0 is fine. Hosted "
+            "providers (e.g. MiniMax) may require temperature > 0."
+        ),
+    )
     ap.add_argument("--report", type=Path, default=None)
     ap.add_argument(
         "--only",
@@ -318,7 +327,11 @@ def main() -> int:
     registry = ToolRegistry()
     register_builtin_tools(registry)
     load_profile_tools(registry, profile.tools)
-    intelligence = LLMIntelligence(model=args.model, api_base=args.api_base)
+    intelligence = LLMIntelligence(
+        model=args.model,
+        api_base=args.api_base,
+        temperature=args.temperature,
+    )
     kernel = AgentKernel(intelligence=intelligence, registry=registry)
 
     tasks = build_tasks()
@@ -328,17 +341,21 @@ def main() -> int:
 
     results: list[dict[str, Any]] = []
     passed = 0
-    print(f"[M3-smoke] model={args.model} api_base={args.api_base}")
-    print(f"[M3-smoke] profile={profile.name} tools={len(profile.tools)} enrichers={len(profile.enrichers)}")
+    print(f"[M3-smoke] model={args.model} api_base={args.api_base}", flush=True)
+    print(
+        f"[M3-smoke] profile={profile.name} tools={len(profile.tools)} "
+        f"enrichers={len(profile.enrichers)}",
+        flush=True,
+    )
     for task in tasks:
-        print(f"\n[{task.name}] {task.description}")
-        print(f"  pcap: {task.pcap}")
+        print(f"\n[{task.name}] {task.description}", flush=True)
+        print(f"  pcap: {task.pcap}", flush=True)
         ok, reason, info = run_task(task, kernel, profile)
         status = "PASS" if ok else "FAIL"
-        print(f"  -> {status} ({info.get('elapsed_s', '?')}s)  {reason}")
+        print(f"  -> {status} ({info.get('elapsed_s', '?')}s)  {reason}", flush=True)
         if not ok:
-            print(f"     final_json={info.get('final_json')!r}")
-            print(f"     calls={info.get('calls')}")
+            print(f"     final_json={info.get('final_json')!r}", flush=True)
+            print(f"     calls={info.get('calls')}", flush=True)
         results.append(
             {
                 "task": task.name,

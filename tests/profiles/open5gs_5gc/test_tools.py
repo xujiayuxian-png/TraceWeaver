@@ -37,6 +37,25 @@ def test_list_ue_sessions_groups_by_ngap_ids(enriched_handle) -> None:
     assert first["event_counts"]["REGISTRATION_REQUEST"] == 1
 
 
+def test_list_ue_sessions_groups_when_amf_id_absent_on_first_frame(
+    enriched_handle,
+) -> None:
+    """Real captures start with REGISTRATION_REQUEST (no AMF id yet)."""
+    handle = enriched_handle(
+        [
+            make_record(seq=1, ran="1", amf=None, mm_type=65),  # pre-AMF-id
+            make_record(seq=2, ran="1", amf="6", mm_type=68, mm_cause=9),
+        ]
+    )
+    result = ListUESessionsTool().run(ToolContext(source_handle=handle))
+    assert result.data["count"] == 1
+    s = result.data["sessions"][0]
+    assert s["ran_ue_ngap_id"] == "1"
+    assert s["amf_ue_ngap_id"] == "6"
+    assert s["frames"] == 2
+    assert s["last_event"] == "REGISTRATION_REJECT"
+
+
 def test_list_ue_sessions_empty(enriched_handle) -> None:
     handle = enriched_handle([make_record(seq=1, pfcp_msg_type=1)])
     result = ListUESessionsTool().run(ToolContext(source_handle=handle))
@@ -120,6 +139,26 @@ def test_sbi_collapses_streams(enriched_handle) -> None:
     assert call["method"] == "POST"
     assert call["path"] == "/namf-comm/v1/ue-contexts"
     assert call["status"] == 500
+
+
+def test_sbi_skips_data_continuation_frames(enriched_handle) -> None:
+    """Frames on a stream with no method/path/status headers are noise."""
+    handle = enriched_handle(
+        [
+            make_record(
+                seq=1, tcp_stream="0", http2_streamid="1",
+                http2_method="POST", http2_path="/nausf-auth/v1/ue-authentications",
+                frame_protocols="eth:ip:tcp:http2",
+            ),
+            make_record(
+                seq=2, tcp_stream="0", http2_streamid="5",
+                frame_protocols="eth:ip:tcp:http2",
+            ),
+        ]
+    )
+    result = GetSBICallsTool().run(ToolContext(source_handle=handle))
+    assert result.data["count"] == 1
+    assert result.data["calls"][0]["path"] == "/nausf-auth/v1/ue-authentications"
 
 
 def test_sbi_filters_by_path(enriched_handle) -> None:

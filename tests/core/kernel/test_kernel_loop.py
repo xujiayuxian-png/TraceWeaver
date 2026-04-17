@@ -366,3 +366,49 @@ def test_registry_missing_required_arg_raises():
     reg = _registry(AddTool())
     with pytest.raises(ValueError, match="missing required args"):
         reg.invoke("add", {"a": 1}, ToolContext())
+
+
+def test_duplicate_tool_call_short_circuits():
+    """
+    If the LLM re-emits the exact same (tool, args) pair, the kernel
+    must not re-execute the tool: it must return a synthetic error
+    that tells the model to finalize. This is what keeps weak models
+    from burning their round budget on loops.
+    """
+    add = AddTool()
+    intel = ScriptedIntelligence(
+        queue=[
+            _tool_call("add", a=2, b=3),
+            _tool_call("add", a=2, b=3),  # exact repeat
+            _final(text="done", as_json={"sum": 5}),
+        ]
+    )
+    kernel = AgentKernel(intel, _registry(add))
+
+    result = kernel.run(TaskSpec(system_prompt="sys"), "...")
+
+    assert result.ok
+    exec_round1 = result.trace.events[0].tool_executions[0]
+    exec_round2 = result.trace.events[1].tool_executions[0]
+    assert exec_round1.ok is True
+    assert exec_round2.ok is False
+    assert "duplicate_call" in (exec_round2.error or "")
+
+
+def test_duplicate_detection_is_argument_sensitive():
+    """Calls differing only in arguments must NOT be flagged as dupes."""
+    intel = ScriptedIntelligence(
+        queue=[
+            _tool_call("add", a=1, b=2),
+            _tool_call("add", a=3, b=4),  # different args — legit
+            _final(text="done", as_json={"x": 1}),
+        ]
+    )
+    kernel = AgentKernel(intel, _registry(AddTool()))
+
+    result = kernel.run(TaskSpec(system_prompt="sys"), "...")
+
+    assert result.ok
+    for ev in result.trace.events[:2]:
+        for ex in ev.tool_executions:
+            assert ex.ok is True, f"unexpected error: {ex.error!r}"

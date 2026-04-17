@@ -43,3 +43,5 @@ venv.bak/
 # OS files
 .DS_Store
 Thumbs.db
+
+minimax.txt

@@ -327,3 +327,51 @@ def test_extract_leaked_tool_calls_json_shape():
     text = '<tool_call>{"name": "get_frame_at", "arguments": "{\\"frame_number\\": 9}"}</tool_call>'
     got = extract_leaked_tool_calls(text, TOOLS_SPEC)
     assert got == [{"name": "get_frame_at", "arguments": {"frame_number": 9}}]
+
+
+# ---- <think> stripping (MiniMax / Qwen reasoning mode) --------------------
+
+
+def test_think_tag_in_content_is_moved_to_reasoning():
+    adapter = _make_adapter()
+    resp = _fake_completion(
+        content="<think>Let me analyze</think>The answer is 42.",
+        tool_calls=None,
+    )
+    result = adapter._parse_completion(resp, _req())
+    assert result.kind == "final"
+    assert result.final_text == "The answer is 42."
+    assert "Let me analyze" in (result.reasoning or "")
+
+
+def test_think_tag_stripped_leaves_json_payload_intact():
+    adapter = _make_adapter()
+    schema = {
+        "type": "object",
+        "properties": {"verdict": {"type": "string"}},
+        "required": ["verdict"],
+    }
+    resp = _fake_completion(
+        content='<think>thinking...</think>{"verdict":"success"}',
+        tool_calls=None,
+    )
+    result = adapter._parse_completion(resp, _req(response_schema=schema))
+    assert result.kind == "final"
+    assert result.final_json == {"verdict": "success"}
+
+
+def test_minimax_reasoning_details_extracted():
+    """MiniMax with reasoning_split=True puts thinking in reasoning_details."""
+    adapter = _make_adapter()
+    msg = SimpleNamespace(
+        content="The answer.",
+        reasoning_content=None,
+        reasoning_details=[{"text": "step1"}, {"text": "step2"}],
+        tool_calls=None,
+    )
+    resp = SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+    result = adapter._parse_completion(resp, _req())
+    assert result.kind == "final"
+    assert result.final_text == "The answer."
+    assert "step1" in (result.reasoning or "")
+    assert "step2" in (result.reasoning or "")

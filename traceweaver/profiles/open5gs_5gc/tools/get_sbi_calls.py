@@ -77,7 +77,7 @@ class GetSBICallsTool(Tool):
             method = f.get("http2.headers.method")
             path = f.get("http2.headers.path")
             status = f.get("http2.headers.status")
-            authority = f.get("http2.headers.authority") or f.get("http2.headers.host")
+            authority = f.get("http2.headers.authority")
 
             slot = calls.setdefault(
                 key,
@@ -109,6 +109,13 @@ class GetSBICallsTool(Tool):
                     slot["status"] = status
 
         merged = sorted(calls.values(), key=lambda c: (c["first_seq"],))
+
+        # Drop calls that carry no headers at all — those are data
+        # continuation frames; they add no diagnostic signal.
+        merged = [
+            c for c in merged
+            if any(c.get(k) for k in ("method", "path", "status"))
+        ]
 
         out: list[dict[str, Any]] = []
         for c in merged:

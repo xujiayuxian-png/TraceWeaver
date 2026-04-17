@@ -36,14 +36,23 @@ class ListUESessionsTool(Tool):
                 data={"sessions": [], "count": 0, "hint": "no source_handle"},
             )
 
-        groups: dict[tuple[str, str], dict[str, Any]] = {}
+        # Group by `ran_ue_ngap_id` alone. The AMF_UE_NGAP_ID is only
+        # allocated after the Initial Context Setup, so keying on both
+        # splits a single UE into two groups for captures that include
+        # REGISTRATION_REQUEST (where AMF id is absent).
+        groups: dict[str, dict[str, Any]] = {}
         for rec in ctx.source_handle.iter_records():
             ran = rec.fields.get("ran_ue_ngap_id")
             amf = rec.fields.get("amf_ue_ngap_id")
             if ran is None and amf is None:
-                # Skip frames with no UE identity at all (OAM, heartbeats).
                 continue
-            key = (str(ran or ""), str(amf or ""))
+            if ran is None:
+                # AMF-only frames (e.g. N1N2MessageTransfer between NFs)
+                # are still useful; key them under "amf=<id>" so they
+                # don't collide with any real RAN id string.
+                key = f"amf={amf}"
+            else:
+                key = str(ran)
             slot = groups.setdefault(
                 key,
                 {
@@ -59,6 +68,9 @@ class ListUESessionsTool(Tool):
             )
             slot["frames"] += 1
             slot["last_seq"] = rec.seq
+            # Remember the AMF id as soon as we see one.
+            if slot.get("amf_ue_ngap_id") is None and amf is not None:
+                slot["amf_ue_ngap_id"] = amf
             if slot["first_event"] is None:
                 slot["first_event"] = rec.fields.get("event")
             ev = rec.fields.get("event")
@@ -69,7 +81,7 @@ class ListUESessionsTool(Tool):
 
         sessions = sorted(
             groups.values(),
-            key=lambda s: (s["first_seq"], s.get("ran_ue_ngap_id") or ""),
+            key=lambda s: (s["first_seq"], str(s.get("ran_ue_ngap_id") or "")),
         )
         data: dict[str, Any] = {
             "sessions": sessions,

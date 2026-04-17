@@ -36,13 +36,11 @@ EXTRACT_FIELDS: tuple[str, ...] = (
     "nas-5gs.mm.5gmm_cause",
     "nas-5gs.sm.message_type",
     "nas-5gs.sm.5gsm_cause",
-    "nas-5gs.mm.type_of_identity",
     "nas-5gs.pdu_session_id",
     # SBI (HTTP/2 over TCP 7777 in Open5GS)
     "http2.headers.method",
     "http2.headers.path",
     "http2.headers.status",
-    "http2.headers.host",
     "http2.headers.authority",
     "http2.streamid",
     # PFCP

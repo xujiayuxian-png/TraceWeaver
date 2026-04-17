@@ -33,12 +33,10 @@ source_config:
       - "nas-5gs.mm.5gmm_cause"
       - "nas-5gs.sm.message_type"
       - "nas-5gs.sm.5gsm_cause"
-      - "nas-5gs.mm.type_of_identity"
       - "nas-5gs.pdu_session_id"
       - "http2.headers.method"
       - "http2.headers.path"
       - "http2.headers.status"
-      - "http2.headers.host"
       - "http2.headers.authority"
       - "http2.streamid"
       - "pfcp.msg_type"
@@ -77,5 +75,5 @@ knowledge:
 llm:
   system_prompt_file: prompts/system.md
   response_schema_file: schema/diagnosis.json
-  max_rounds: 8
+  max_rounds: 16
   recommended_model: "openai/qwen/qwen3.5-9b"

@@ -1,0 +1,316 @@
+{
+  "timestamp": "2026-04-17T09:38:53.959749+00:00",
+  "model": "openai/MiniMax-M2",
+  "api_base": "https://api.minimaxi.com/v1",
+  "passed": 4,
+  "total": 5,
+  "results": [
+    {
+      "task": "T1_registration_success",
+      "pcap": "01_registration_success.pcapng",
+      "description": "Clean registration: verdict must be success.",
+      "ok": false,
+      "reason": "expected verdict=success, got 'unclear'",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "unclear",
+        "summary": "UE registration initiated but capture ended before completion; no explicit failure cause visible but REGISTRATION_COMPLETE missing",
+        "failure_point": "seq 471 - NGAP_DOWNLINK_NAS_TRANSPORT (final event, no REGISTRATION_COMPLETE follow-up)",
+        "root_cause": "Capture ended before registration could complete; no NAS reject or cause code present to indicate failure",
+        "evidence": [
+          {
+            "seq": 141,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE initiates registration (nas_mm_type 65)"
+          },
+          {
+            "seq": 296,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "AMF triggers AKA authentication"
+          },
+          {
+            "seq": 297,
+            "event": "AUTHENTICATION_RESPONSE",
+            "note": "UE responds with authentication result"
+          },
+          {
+            "seq": 329,
+            "event": "SECURITY_MODE_COMMAND",
+            "note": "AMF sends security mode command (nas_mm_type 93)"
+          },
+          {
+            "seq": 467,
+            "event": "NGAP_INITIAL_CONTEXT_SETUP",
+            "note": "Initial context setup request/response exchanged"
+          },
+          {
+            "seq": 471,
+            "event": "NGAP_DOWNLINK_NAS_TRANSPORT",
+            "note": "Final event in capture - no REGISTRATION_COMPLETE follows"
+          }
+        ],
+        "confidence": 0.6
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_sbi_calls",
+        "get_pfcp_exchanges",
+        "get_records_around",
+        "query_records",
+        "query_records",
+        "query_records",
+        "query_records",
+        "get_records_around",
+        "query_records",
+        "get_ue_timeline",
+        "get_records_around",
+        "query_records"
+      ],
+      "rounds_used": 15,
+      "tool_calls_total": 14,
+      "elapsed_s": 239.87
+    },
+    {
+      "task": "T2_registration_reject",
+      "pcap": "03_registration_reject.pcapng",
+      "description": "REGISTRATION_REJECT; evidence must include the reject frame.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "All three UEs failed registration because the subscription data for IMSI 001010099999999 was not found in the UDR, causing authentication to fail and the AMF to send REGISTRATION_REJECT with 5GMM cause 9 (UE identity cannot be derived by the network).",
+        "failure_point": "seq 241: REGISTRATION_REJECT (5GMM cause 9)",
+        "root_cause": "UDR returned HTTP 404 when the AMF attempted to retrieve authentication subscription data for imsi-001010099999999. The UE is not provisioned in the 5G core database.",
+        "evidence": [
+          {
+            "seq": 241,
+            "event": "REGISTRATION_REJECT",
+            "note": "mm_cause=9 (UE identity cannot be derived by the network)"
+          },
+          {
+            "seq": 231,
+            "event": "HTTP 404",
+            "note": "GET /nudr-dr/v2/subscription-data/imsi-001010099999999/authentication-data/authentication-subscription returned 404 - subscription not found in UDR"
+          },
+          {
+            "seq": 233,
+            "event": "HTTP 404",
+            "note": "POST /nausf-auth/v1/ue-authentications returned 404 - AUSF could not find UE for authentication"
+          },
+          {
+            "seq": 237,
+            "event": "HTTP 404",
+            "note": "POST /nudm-ueau/v1/suci-0-001-01-0000-0-0-0099999999/security-information/generate-auth-data returned 404 - UDM failed to derive UE identity"
+          }
+        ],
+        "confidence": 1.0
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_records_around",
+        "get_sbi_calls",
+        "get_sbi_calls",
+        "get_nas_cause_meaning",
+        "list_ue_sessions"
+      ],
+      "rounds_used": 8,
+      "tool_calls_total": 7,
+      "elapsed_s": 56.25
+    },
+    {
+      "task": "T3_authentication_failure",
+      "pcap": "04_authentication_failure.pcapng",
+      "description": "AUTHENTICATION_FAILURE (MAC). Root cause must mention MAC/authentication.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE authentication failed with MAC failure (5GMM cause 20); AMF released UE context",
+        "failure_point": "seq 257: AUTHENTICATION_FAILURE with 5GMM cause 20 (MAC failure)",
+        "root_cause": "5GMM cause 20 MAC_FAILURE: The UE failed to verify the MAC in the AUTHENTICATION_REQUEST message, indicating an authentication vector mismatch (incorrect key or SQN mismatch)",
+        "evidence": [
+          {
+            "seq": 256,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "AMF sent authentication request to UE (ran_ue_ngap_id=1, amf_ue_ngap_id=3)"
+          },
+          {
+            "seq": 257,
+            "event": "AUTHENTICATION_FAILURE",
+            "note": "UE responded with AUTHENTICATION_FAILURE, mm_cause=20 (MAC failure)"
+          },
+          {
+            "seq": 258,
+            "event": "AUTHENTICATION_RESULT",
+            "note": "AMF sent AUTHENTICATION_RESULT (authentication result indication)"
+          },
+          {
+            "seq": 259,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "AMF initiated UE context release (procedureCode=41)"
+          },
+          {
+            "seq": 261,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "UE acknowledged UE context release"
+          }
+        ],
+        "confidence": 1.0
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning",
+        "get_records_around",
+        "get_sbi_calls"
+      ],
+      "rounds_used": 6,
+      "tool_calls_total": 5,
+      "elapsed_s": 51.63
+    },
+    {
+      "task": "T4_pfcp_failure",
+      "pcap": "07_pfcp_failure.pcapng",
+      "description": "UPF unreachable; diagnosis must reach PFCP/UPF.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE registration succeeded but PDU session establishment failed because the UPF did not respond to PFCP Session Establishment Requests, causing the SMF to repeatedly retry creating the session.",
+        "failure_point": "seq 438-439: PFCP SESSION_ESTABLISHMENT_REQUEST (SMF→UPF) - no success response",
+        "root_cause": "UPF not responding to PFCP session establishment requests; SMF sends SESSION_ESTABLISHMENT_REQUEST but receives only ICMP echo (seq 439 shows pfcp msg wrapped in icmp), causing PDU session to remain pending. UE repeatedly sends PDU_SESSION_ESTABLISHMENT_REQUEST (seq 387,1149,1812,2545,3241,3936) but never receives ACCEPT.",
+        "evidence": [
+          {
+            "seq": 256,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "UE→AMF: authentication started"
+          },
+          {
+            "seq": 257,
+            "event": "AUTHENTICATION_RESPONSE",
+            "note": "UE→AMF: authentication successful"
+          },
+          {
+            "seq": 288,
+            "event": "SECURITY_MODE_COMMAND",
+            "note": "AMF→UE: security mode command sent"
+          },
+          {
+            "seq": 367,
+            "event": "NGAP_INITIAL_CONTEXT_SETUP",
+            "note": "RAN↔AMF: initial context established (success)"
+          },
+          {
+            "seq": 387,
+            "event": "PDU_SESSION_ESTABLISHMENT_REQUEST",
+            "note": "UE→SMF: PDU session request (type 0xc1) - no ACCEPT follows"
+          },
+          {
+            "seq": 438,
+            "event": "SESSION_ESTABLISHMENT_REQUEST",
+            "note": "SMF→UPF: PFCP session request (msg_type=50) - no response"
+          },
+          {
+            "seq": 521,
+            "event": "SESSION_ESTABLISHMENT_REQUEST",
+            "note": "SMF→UPF: repeated PFCP request - still no response"
+          },
+          {
+            "seq": 1133,
+            "event": "NGAP_DOWNLINK_NAS_TRANSPORT",
+            "note": "AMF→UE: periodic DL NAS (no session data)"
+          },
+          {
+            "seq": 3921,
+            "event": "NGAP_DOWNLINK_NAS_TRANSPORT",
+            "note": "Final DL NAS transport - PDU session never established"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_sbi_calls",
+        "get_records_around",
+        "get_sbi_calls",
+        "get_pfcp_exchanges",
+        "get_records_around",
+        "get_records_around",
+        "query_records",
+        "query_records",
+        "get_records_around",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 13,
+      "tool_calls_total": 12,
+      "elapsed_s": 220.45
+    },
+    {
+      "task": "T5_sbi_failure",
+      "pcap": "08_sbi_failure.pcapng",
+      "description": "SBI failure (AUSF down); diagnosis must reach SBI / HTTP / AUSF.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE registration failed twice with 5GMM cause 90 (protocol error) - the AMF rejected the UE's registration request before completing authentication",
+        "failure_point": "REGISTRATION_REJECT at seq 700 and seq 1548",
+        "root_cause": "5GMM cause 90 (Protocol error, unspecified) - the AMF rejected registration during the early authentication phase without sending AUTHENTICATION_REQUEST or SECURITY_MODE_COMMAND to the UE, indicating a protocol error in processing the registration request",
+        "evidence": [
+          {
+            "seq": 241,
+            "event": "REGISTRATION_REQUEST",
+            "note": "Initial registration request from UE (ran_ue_ngap_id=1)"
+          },
+          {
+            "seq": 254,
+            "event": "Nausf_UEAuthentication POST",
+            "note": "AMF initiated authentication with AUSF (SBI call)"
+          },
+          {
+            "seq": 700,
+            "event": "REGISTRATION_REJECT",
+            "note": "AMF rejected with 5GMM cause 90, no AUTHENTICATION_REQUEST was sent to UE"
+          },
+          {
+            "seq": 1117,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE retry after first rejection"
+          },
+          {
+            "seq": 1548,
+            "event": "REGISTRATION_REJECT",
+            "note": "Second rejection with same cause 90"
+          }
+        ],
+        "confidence": 0.85
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning",
+        "search_knowledge",
+        "search_knowledge",
+        "search_knowledge",
+        "get_sbi_calls",
+        "get_records_around",
+        "query_records",
+        "get_records_around",
+        "query_records",
+        "get_sbi_calls",
+        "search_knowledge",
+        "search_knowledge"
+      ],
+      "rounds_used": 15,
+      "tool_calls_total": 14,
+      "elapsed_s": 117.08
+    }
+  ]
+}

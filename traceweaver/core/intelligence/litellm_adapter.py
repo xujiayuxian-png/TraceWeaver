@@ -239,6 +239,12 @@ def _provider_kwargs(model: str, api_base: str | None) -> dict[str, Any]:
             kwargs["extra_body"] = {
                 "chat_template_kwargs": {"enable_thinking": False}
             }
+        elif "minimax" in lower:
+            # MiniMax reasoning models embed <think>...</think> in
+            # `content` by default. `reasoning_split=True` moves the
+            # thinking into `reasoning_details` so `content` contains
+            # only the final answer / tool-call payload.
+            kwargs["extra_body"] = {"reasoning_split": True}
     return kwargs
 
 
@@ -303,12 +309,23 @@ class LLMIntelligence(Intelligence):
         request: IntelligenceRequest,
     ) -> IntelligenceResponse:
         msg = resp.choices[0].message
-        content = getattr(msg, "content", None) or ""
+        raw_content = getattr(msg, "content", None) or ""
         reasoning = (
             getattr(msg, "reasoning_content", None)
             or getattr(msg, "reasoning", None)
+            or _extract_reasoning_details(msg)
             or ""
         )
+        # Some reasoning models (MiniMax M2.x default mode, vLLM Qwen
+        # with thinking on, ...) embed <think>...</think> segments in
+        # `content`. Move that text into `reasoning` and leave content
+        # with just the answer / tool JSON.
+        stripped_content, leaked_reasoning = _split_think_tags(raw_content)
+        content = stripped_content
+        if leaked_reasoning and not reasoning:
+            reasoning = leaked_reasoning
+        elif leaked_reasoning:
+            reasoning = f"{reasoning}\n{leaked_reasoning}" if reasoning else leaked_reasoning
         native_tool_calls = getattr(msg, "tool_calls", None) or []
 
         tool_calls = [
@@ -365,6 +382,46 @@ class LLMIntelligence(Intelligence):
             reasoning=reasoning or None,
             assistant_content=content,
         )
+
+
+_THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _split_think_tags(text: str) -> tuple[str, str]:
+    """
+    Return (content_without_think, concatenated_think_bodies).
+
+    If the model emitted `<think>A</think>actual answer`, we want the
+    kernel to see `actual answer` as content and `A` as reasoning.
+    """
+    if not text or "<think" not in text.lower():
+        return text, ""
+    bodies = _THINK_RE.findall(text)
+    cleaned = _THINK_RE.sub("", text).strip()
+    # Also drop dangling open <think> with no close (partial stream, length cut-off)
+    if "<think>" in cleaned.lower():
+        idx = cleaned.lower().find("<think>")
+        cleaned = cleaned[:idx].strip()
+    return cleaned, "\n".join(b.strip() for b in bodies if b.strip())
+
+
+def _extract_reasoning_details(msg: Any) -> str:
+    """
+    MiniMax with `reasoning_split=True` returns:
+      message.reasoning_details = [{"text": "..."}, ...]
+    """
+    details = getattr(msg, "reasoning_details", None)
+    if not details:
+        return ""
+    texts: list[str] = []
+    for d in details:
+        if isinstance(d, dict):
+            t = d.get("text")
+        else:
+            t = getattr(d, "text", None)
+        if t:
+            texts.append(str(t))
+    return "\n".join(texts)
 
 
 __all__ = ["LLMIntelligence", "extract_leaked_tool_calls"]

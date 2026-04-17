@@ -1,0 +1,316 @@
+{
+  "timestamp": "2026-04-17T11:08:33.357869+00:00",
+  "model": "openai/qwen3.5-9b@q8_k_xl",
+  "api_base": "http://127.0.0.1:1234/v1",
+  "passed": 4,
+  "total": 5,
+  "results": [
+    {
+      "task": "T1_registration_success",
+      "pcap": "01_registration_success.pcapng",
+      "description": "Clean registration: verdict must be success.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "UE successfully completed registration with the Open5GS 5G core through authentication and security mode command procedures.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 141,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE initiated registration request"
+          },
+          {
+            "seq": 296,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "AMF requested authentication from UE"
+          },
+          {
+            "seq": 297,
+            "event": "AUTHENTICATION_RESPONSE",
+            "note": "UE responded with authentication credentials"
+          },
+          {
+            "seq": 329,
+            "event": "SECURITY_MODE_COMMAND",
+            "note": "Security mode command sent to establish encryption/integrity protection"
+          },
+          {
+            "seq": 467,
+            "event": "NGAP_INITIAL_CONTEXT_SETUP",
+            "note": "AMF initiated initial context setup for UE"
+          },
+          {
+            "seq": 468,
+            "event": "NGAP_INITIAL_CONTEXT_SETUP",
+            "note": "UE acknowledged initial context setup"
+          },
+          {
+            "seq": 20,
+            "event": "POST /nausf-auth/v1/ue-authentications",
+            "note": "SBI call returned status 201 (created)"
+          },
+          {
+            "seq": 27,
+            "event": "PUT /nudm-uecm/v1/registrations/amf-3gpp-access",
+            "note": "SBI call returned status 201 (registration created)"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_sbi_calls",
+        "get_pfcp_exchanges",
+        "get_records_around",
+        "query_records",
+        "query_records",
+        "query_records",
+        "search_knowledge",
+        "submit_diagnosis"
+      ],
+      "rounds_used": 11,
+      "tool_calls_total": 10,
+      "elapsed_s": 70.05
+    },
+    {
+      "task": "T2_registration_reject",
+      "pcap": "03_registration_reject.pcapng",
+      "description": "REGISTRATION_REJECT; evidence must include the reject frame.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "All three UEs attempted to register but were rejected due to identity resolution failures in the core network (AMF cannot derive UE identity from SUCI/SUPI)",
+        "failure_point": "REGISTRATION_REJECT at seq 241 with mm_cause 9 for UE ran_ue_ngap_id=1",
+        "root_cause": "5GMM cause 9 'UE identity cannot be derived by the network' - AMF failed to resolve UE's SUCI/SUPI due to AUSF/UDM lookup failures, evidenced by 404 errors on authentication and subscription data endpoints",
+        "evidence": [
+          {
+            "seq": 158,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE ran_ue_ngap_id=1 initiated registration"
+          },
+          {
+            "seq": 241,
+            "event": "REGISTRATION_REJECT",
+            "note": "Registration rejected with mm_cause 9 (identity cannot be derived)"
+          },
+          {
+            "seq": 587,
+            "event": "REGISTRATION_REJECT",
+            "note": "UE ran_ue_ngap_id=2 also rejected with mm_cause 9"
+          },
+          {
+            "seq": 914,
+            "event": "REGISTRATION_REJECT",
+            "note": "UE ran_ue_ngap_id=3 also rejected with mm_cause 9"
+          },
+          {
+            "seq": 237,
+            "event": null,
+            "note": "HTTP/2 404 error on AUSF authentication endpoint"
+          },
+          {
+            "seq": 583,
+            "event": null,
+            "note": "HTTP/2 404 error on AUSF authentication endpoint for second UE"
+          },
+          {
+            "seq": 910,
+            "event": null,
+            "note": "HTTP/2 404 error on AUSF authentication endpoint for third UE"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning",
+        "get_records_around",
+        "get_sbi_calls",
+        "get_pfcp_exchanges",
+        "search_knowledge",
+        "search_knowledge",
+        "query_records",
+        "query_records",
+        "query_records",
+        "query_records",
+        "query_records",
+        "query_records"
+      ],
+      "rounds_used": 15,
+      "tool_calls_total": 14,
+      "elapsed_s": 89.9
+    },
+    {
+      "task": "T3_authentication_failure",
+      "pcap": "04_authentication_failure.pcapng",
+      "description": "AUTHENTICATION_FAILURE (MAC). Root cause must mention MAC/authentication.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE registration failed due to AKA authentication mismatch causing MAC failure (5GMM cause 20)",
+        "failure_point": "AUTHENTICATION_FAILURE at seq 257 with mm_cause=20 (MAC failure)",
+        "root_cause": "5GMM cause 20 MAC failure - NAS integrity MAC check failed due to AKA authentication mismatch between UE and UDM/HSS (SQN out of sync, wrong K, or race after K-update)",
+        "evidence": [
+          {
+            "seq": 227,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE initiated registration request"
+          },
+          {
+            "seq": 256,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "AMF sent AKA challenge to UE"
+          },
+          {
+            "seq": 257,
+            "event": "AUTHENTICATION_FAILURE",
+            "note": "UE failed authentication with mm_cause=20 (MAC failure)"
+          },
+          {
+            "seq": 259,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "AMF released UE context after auth failure"
+          },
+          {
+            "seq": 261,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "Final release of UE session"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning",
+        "search_knowledge",
+        "query_records",
+        "search_knowledge"
+      ],
+      "rounds_used": 7,
+      "tool_calls_total": 6,
+      "elapsed_s": 27.77
+    },
+    {
+      "task": "T4_pfcp_failure",
+      "pcap": "07_pfcp_failure.pcapng",
+      "description": "UPF unreachable; diagnosis must reach PFCP/UPF.",
+      "ok": false,
+      "reason": "expected PFCP / UPF cue in diagnosis (either text mention or get_pfcp_exchanges call); calls=['list_ue_sessions', 'get_ue_timeline', 'query_records', 'query_records', 'query_records', 'query_records', 'get_ue_timeline', 'get_sbi_calls', 'get_ue_timeline', 'get_nas_cause_meaning', 'submit_diagnosis']",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE registration failed with 5GMM cause 20 MAC_FAILURE, preventing successful network access and PDU session establishment.",
+        "failure_point": "seq 36: REGISTRATION_ACCEPT sent to UE with 5GMM cause 20 (MAC_FAILURE)",
+        "root_cause": "5GMM cause 20 MAC_FAILURE: AKA authentication failed at the UE, preventing successful registration and subsequent PDU session establishment",
+        "evidence": [
+          {
+            "seq": 34,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE initiated registration"
+          },
+          {
+            "seq": 36,
+            "event": "REGISTRATION_ACCEPT",
+            "note": "AMF rejected registration with 5GMM cause 20 MAC_FAILURE"
+          },
+          {
+            "seq": 1811,
+            "event": "POST /nsmf-pdusession/v1/sm-contexts",
+            "note": "SMF attempted PDU session creation but received no response (status null)"
+          },
+          {
+            "seq": 1834,
+            "event": "POST /npcf-smpolicycontrol/v1/sm-policies",
+            "note": "SMF attempted policy control but received no response (status null)"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "query_records",
+        "query_records",
+        "query_records",
+        "query_records",
+        "get_ue_timeline",
+        "get_sbi_calls",
+        "get_ue_timeline",
+        "get_nas_cause_meaning",
+        "submit_diagnosis"
+      ],
+      "rounds_used": 12,
+      "tool_calls_total": 11,
+      "elapsed_s": 97.93
+    },
+    {
+      "task": "T5_sbi_failure",
+      "pcap": "08_sbi_failure.pcapng",
+      "description": "SBI failure (AUSF down); diagnosis must reach SBI / HTTP / AUSF.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE registration failed twice due to PLMN not allowed (5GMM cause 90)",
+        "failure_point": "REGISTRATION_REJECT at seq 700 and seq 1548 with mm_cause=90",
+        "root_cause": "5GMM cause 90: PLMN not allowed - the network rejected registration because the UE's HPLMN does not match or is not allowed in the serving PLMN",
+        "evidence": [
+          {
+            "seq": 241,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE attempted initial registration"
+          },
+          {
+            "seq": 700,
+            "event": "REGISTRATION_REJECT",
+            "note": "First rejection with mm_cause=90 (PLMN not allowed)"
+          },
+          {
+            "seq": 1117,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE re-attempted registration"
+          },
+          {
+            "seq": 1548,
+            "event": "REGISTRATION_REJECT",
+            "note": "Second rejection with mm_cause=90 (PLMN not allowed)"
+          },
+          {
+            "seq": null,
+            "event": "No SBI calls to UDM/AUSF observed",
+            "note": "AMF rejected without contacting authentication services"
+          }
+        ],
+        "confidence": 0.85
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning",
+        "search_knowledge",
+        "query_records",
+        "search_knowledge",
+        "get_sbi_calls",
+        "get_pfcp_exchanges",
+        "search_knowledge",
+        "search_knowledge",
+        "search_knowledge"
+      ],
+      "rounds_used": 12,
+      "tool_calls_total": 11,
+      "elapsed_s": 52.52
+    }
+  ]
+}

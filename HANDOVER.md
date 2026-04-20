@@ -15,7 +15,7 @@
 4. **`scripts/validate_tool_calling.py`** — 9B 基线 tool calling 验证脚本（已通过，保留做回归）
 5. **`scripts/run_m1_smoke.py`** — M1 kernel 端到端冒烟脚本，走 AgentKernel 通路
 6. **`scripts/run_m2_smoke.py`** — M2 冒烟脚本，走 Profile + SourceHandle + KnowledgeStore + built-in tools 通路
-7. **`scripts/run_m3_smoke.py`** — M3 冒烟脚本（**M3 硬门槛**），5 个 canonical pcap 5/5 过才算 M3 完成
+7. **`scripts/run_m3_smoke.py`** — M3 冒烟脚本（**M3 硬门槛**），9 个 canonical pcap 9/9 过才算 M3 完成（P0 扩展：覆盖注册/PDU/去注册/重试等场景）
 8. **`scripts/run_m3_regression.py`** — M3 回归基线脚本，对 28 个 pcap 采样产出快照，无 pass/fail 门槛
 9. `archive/v1/README.md` — v1 归档索引，只在需要参考 v1 资产时看
 
@@ -38,7 +38,7 @@ TraceWeaver/
 │   ├── validate_tool_calling.py                   9B tool calling 基线验证
 │   ├── run_m1_smoke.py                          ★ M1 kernel AgentKernel 冒烟
 │   ├── run_m2_smoke.py                          ★ M2 Profile + 内建工具 冒烟
-│   ├── run_m3_smoke.py                          ★ M3 硬门槛（5 canonical pcap 5/5）
+│   ├── run_m3_smoke.py                          ★ M3 硬门槛（9 canonical pcap 9/9）
 │   ├── run_m3_regression.py                     ★ M3 回归基线（28 pcap 全量采样，无门槛）
 │   ├── _m3_accuracy.py                          回归 vs smoke 五项检查 / 文件名软标签准确率
 │   ├── _m3_compare.py                           两份回归 JSON 并排对比
@@ -223,7 +223,7 @@ scripts/run_m2_smoke.py            5 任务全绿（openai/qwen/qwen3.5-9b @ LM 
 .venv\Scripts\python scripts\run_m2_smoke.py   # 5/5 PASS
 ```
 
-**预期**：pytest 全部通过（tshark 真二进制测试会 skip），smoke `5/5 tasks PASS`。
+**预期**：pytest 全部通过（tshark 真二进制测试会 skip），smoke `9/9 tasks PASS`。
 
 ### M3 交付清单（已在仓库）
 
@@ -303,7 +303,7 @@ tests/profiles/open5gs_5gc/      fields / enrich / tools / profile_loads 各自�
 
 ### M3 冒烟验收命令（可复现）
 
-**硬门槛**（5 canonical pcap，5/5 过才算 M3 完成）：
+**硬门槛**（9 canonical pcap，9/9 过才算 M3 完成）：
 
 ```powershell
 # 本地基线：Qwen3.5-9B @ LM Studio（推理较弱，未达标亦属已知）

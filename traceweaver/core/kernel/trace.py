@@ -52,6 +52,9 @@ class TraceEvent(BaseModel):
     reasoning: str | None = None
     tool_executions: list[ToolExecution] = Field(default_factory=list)
     is_final: bool = False
+    # Telemetry (P1.1)
+    tokens_used: int | None = None  # LLM tokens for this round
+    cost_usd: float | None = None   # Estimated cost for this round
 
 
 class AgentTrace(BaseModel):
@@ -74,6 +77,25 @@ class AgentTrace(BaseModel):
                     return True
         return False
 
+    # Telemetry aggregation (P1.1)
+    def total_tokens(self) -> int:
+        """Sum tokens across all rounds with telemetry."""
+        return sum(
+            e.tokens_used for e in self.events if e.tokens_used is not None
+        )
+
+    def total_cost_usd(self) -> float:
+        """Sum estimated cost across all rounds with telemetry."""
+        return sum(
+            e.cost_usd for e in self.events if e.cost_usd is not None
+        )
+
+    def wall_clock_s(self) -> float:
+        """Total tool execution time (not LLM latency)."""
+        return sum(
+            ex.elapsed_s for e in self.events for ex in e.tool_executions
+        )
+
 
 class AgentResult(BaseModel):
     """What `AgentKernel.run` returns to its caller."""
@@ -85,6 +107,10 @@ class AgentResult(BaseModel):
     final_json: dict[str, Any] | None = None
     trace: AgentTrace = Field(default_factory=AgentTrace)
     error: str | None = None
+    # Telemetry summary (P1.1)
+    total_tokens: int | None = None
+    total_cost_usd: float | None = None
+    wall_clock_s: float | None = None
 
     @property
     def ok(self) -> bool:

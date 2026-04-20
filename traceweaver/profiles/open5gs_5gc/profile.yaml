@@ -75,5 +75,5 @@ knowledge:
 llm:
   system_prompt_file: prompts/system.md
   response_schema_file: schema/diagnosis.json
-  max_rounds: 16
+  max_rounds: 8
   recommended_model: "openai/qwen/qwen3.5-9b"

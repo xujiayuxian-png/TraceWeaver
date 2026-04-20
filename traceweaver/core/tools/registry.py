@@ -91,45 +91,55 @@ class ToolRegistry:
         coerced: dict[str, Any] = {}
         for key, raw in arguments.items():
             expected = props.get(key, {}).get("type") if isinstance(props.get(key), dict) else None
-            coerced[key] = ToolRegistry._coerce(raw, expected)
+            try:
+                coerced[key] = ToolRegistry._coerce(raw, expected, key)
+            except ValueError as e:
+                raise ValueError(f"tool {tool.spec.name} argument coercion failed: {e}") from e
         return coerced
 
     @staticmethod
-    def _coerce(value: Any, expected: str | None) -> Any:
+    def _coerce(value: Any, expected: str | None, key: str = "") -> Any:
+        """
+        Coerce string values to expected types.
+        Raises ValueError on coercion failure (P1.2: fail fast for better diagnostics).
+        """
         if expected is None or not isinstance(value, str):
             return value
         if expected == "integer":
             try:
                 return int(value)
-            except (TypeError, ValueError):
-                return value
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"cannot coerce {key!r}={value!r} to integer") from e
         if expected == "number":
             try:
                 return float(value)
-            except (TypeError, ValueError):
-                return value
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"cannot coerce {key!r}={value!r} to number") from e
         if expected == "boolean":
             low = value.strip().lower()
             if low in {"true", "1", "yes"}:
                 return True
             if low in {"false", "0", "no"}:
                 return False
+            raise ValueError(f"cannot coerce {key!r}={value!r} to boolean")
         if expected in {"object", "array"}:
             # Some models serialize nested structures as JSON strings
-            # (Qwen does this intermittently). If the text parses as the
-            # expected container shape, accept it; otherwise pass through
-            # so the tool can emit a proper `hint`.
+            # (Qwen does this intermittently). Must parse to expected shape.
             import json as _json
 
             try:
                 parsed = _json.loads(value)
-            except (TypeError, ValueError):
-                return value
+            except (TypeError, ValueError) as e:
+                raise ValueError(
+                    f"cannot coerce {key!r} to {expected}: invalid JSON"
+                ) from e
             if expected == "object" and isinstance(parsed, dict):
                 return parsed
             if expected == "array" and isinstance(parsed, list):
                 return parsed
-            return value
+            raise ValueError(
+                f"cannot coerce {key!r} to {expected}: got {type(parsed).__name__} instead"
+            )
         return value
 
     @staticmethod

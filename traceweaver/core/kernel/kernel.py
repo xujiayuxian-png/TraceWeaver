@@ -213,22 +213,31 @@ class AgentKernel:
         Returns an AgentResult to end the run, or None to keep looping
         (schema retry case).
         """
-        missing = _schema_missing_keys(task.response_schema, resp.final_json)
+        # Try full schema validation first, fall back to required keys
+        errors = _schema_validate_full(task.response_schema, resp.final_json)
+        if not errors:
+            errors = _schema_missing_keys(task.response_schema, resp.final_json)
 
-        if not missing:
+        if not errors:
             state.append_event(
                 TraceEvent(
                     round_index=round_idx,
                     assistant_content=resp.final_text or "",
                     reasoning=resp.reasoning,
                     is_final=True,
+                    tokens_used=resp.tokens_used,
+                    cost_usd=resp.cost_usd,
                 )
             )
+            trace = AgentTrace(events=state.events)
             return AgentResult(
                 stop_reason="final",
                 final_text=resp.final_text,
                 final_json=resp.final_json,
-                trace=AgentTrace(events=state.events),
+                trace=trace,
+                total_tokens=trace.total_tokens() or None,
+                total_cost_usd=trace.total_cost_usd() or None,
+                wall_clock_s=trace.wall_clock_s() or None,
             )
 
         # Schema mismatch: record the failed attempt, push a corrective
@@ -239,18 +248,29 @@ class AgentKernel:
                 assistant_content=resp.final_text or "",
                 reasoning=resp.reasoning,
                 is_final=False,
+                tokens_used=resp.tokens_used,
+                cost_usd=resp.cost_usd,
             )
         )
         state.append_message(
             Message(role="assistant", content=resp.final_text or "")
         )
+        # Format error message for LLM feedback
+        if errors:
+            error_msg = errors[0] if len(errors) == 1 else f"{len(errors)} validation errors"
+            missing_keys = _schema_missing_keys(task.response_schema, resp.final_json)
+            if missing_keys:
+                error_msg += f" (missing required fields: {sorted(missing_keys)})"
+        else:
+            error_msg = "schema validation failed"
+
         state.append_message(
             Message(
                 role="user",
                 content=(
-                    "Your previous answer was missing required fields: "
-                    f"{sorted(missing)}. Please retry and output a single JSON "
-                    "object with all required fields."
+                    "Your previous answer failed schema validation: "
+                    f"{error_msg}. Please retry and output a single JSON "
+                    "object matching the required schema."
                 ),
             )
         )
@@ -314,6 +334,8 @@ class AgentKernel:
                 reasoning=resp.reasoning,
                 tool_executions=executions,
                 is_final=False,
+                tokens_used=resp.tokens_used,
+                cost_usd=resp.cost_usd,
             )
         )
 
@@ -404,6 +426,31 @@ def _schema_missing_keys(
         return ["<no-json-produced>"]
     required = schema.get("required", []) or []
     return [k for k in required if k not in final_json]
+
+
+def _schema_validate_full(
+    schema: dict[str, Any] | None,
+    final_json: dict[str, Any] | None,
+) -> list[str]:
+    """
+    Full JSON Schema validation (enum, type, format).
+    Returns list of validation error messages.
+    """
+    if schema is None:
+        return []
+    if final_json is None:
+        return ["<no-json-produced>"]
+
+    try:
+        import jsonschema
+
+        jsonschema.validate(instance=final_json, schema=schema)
+        return []
+    except jsonschema.ValidationError as e:
+        return [e.message]
+    except Exception as e:  # noqa: BLE001
+        # jsonschema not installed or other error - fall back to required keys only
+        return _schema_missing_keys(schema, final_json)
 
 
 def _tool_result_to_text(execution: ToolExecution) -> str:

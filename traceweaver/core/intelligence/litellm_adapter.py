@@ -281,7 +281,11 @@ class LLMIntelligence(Intelligence):
     ) -> None:
         self.model = model
         self.api_base = api_base
-        self.temperature = temperature
+        # MiniMax requires temperature in (0, 1], not [0, 1]
+        # Clamp 0.0 to minimum 0.05 to avoid provider rejection
+        self.temperature = (
+            max(0.05, temperature) if "minimax" in model.lower() else temperature
+        )
         self.name = f"LLMIntelligence[{model}]"
         self._extra = dict(extra_completion_kwargs or {})
 
@@ -359,14 +363,6 @@ class LLMIntelligence(Intelligence):
                     ]
                     break
 
-        if tool_calls:
-            return IntelligenceResponse(
-                kind="tool_calls",
-                tool_calls=tool_calls,
-                reasoning=reasoning or None,
-                assistant_content=content,
-            )
-
         # No tool calls => final answer.
         final_text = content or reasoning or ""
         final_json: dict[str, Any] | None = None
@@ -375,12 +371,27 @@ class LLMIntelligence(Intelligence):
                 reasoning
             )
 
+        # Extract telemetry from response (P1.1)
+        tokens_used, cost_usd = _extract_usage(resp, self.model)
+
+        if tool_calls:
+            return IntelligenceResponse(
+                kind="tool_calls",
+                tool_calls=tool_calls,
+                reasoning=reasoning or None,
+                assistant_content=content,
+                tokens_used=tokens_used,
+                cost_usd=cost_usd,
+            )
+
         return IntelligenceResponse(
             kind="final",
             final_text=final_text,
             final_json=final_json,
             reasoning=reasoning or None,
             assistant_content=content,
+            tokens_used=tokens_used,
+            cost_usd=cost_usd,
         )
 
 
@@ -422,6 +433,56 @@ def _extract_reasoning_details(msg: Any) -> str:
         if t:
             texts.append(str(t))
     return "\n".join(texts)
+
+
+def _extract_usage(resp: Any, model: str) -> tuple[int | None, float | None]:
+    """
+    Extract token usage and estimated cost from litellm response.
+    Returns (tokens_used, cost_usd) or (None, None) if not available.
+    """
+    usage = getattr(resp, "usage", None)
+    if usage is None:
+        return None, None
+
+    # Try to get token counts
+    prompt_tokens = getattr(usage, "prompt_tokens", None) or usage.get("prompt_tokens", 0) if isinstance(usage, dict) else 0  # type: ignore
+    completion_tokens = getattr(usage, "completion_tokens", None) or usage.get("completion_tokens", 0) if isinstance(usage, dict) else 0  # type: ignore
+    total_tokens = getattr(usage, "total_tokens", None) or usage.get("total_tokens", 0) if isinstance(usage, dict) else 0  # type: ignore
+
+    if not total_tokens and (prompt_tokens or completion_tokens):
+        total_tokens = (prompt_tokens or 0) + (completion_tokens or 0)
+
+    if not total_tokens:
+        return None, None
+
+    # Rough cost estimation (per 1M tokens) - local/unknown models = 0
+    model_lower = model.lower()
+    if "gpt-4" in model_lower and "turbo" not in model_lower:
+        # GPT-4: $30/$60 per 1M
+        cost = (prompt_tokens * 30 + completion_tokens * 60) / 1_000_000
+    elif "gpt-4-turbo" in model_lower or "gpt-4-0125" in model_lower:
+        # GPT-4-turbo: $10/$30 per 1M
+        cost = (prompt_tokens * 10 + completion_tokens * 30) / 1_000_000
+    elif "gpt-3.5" in model_lower or "gpt-35" in model_lower:
+        # GPT-3.5-turbo: $0.5/$1.5 per 1M
+        cost = (prompt_tokens * 0.5 + completion_tokens * 1.5) / 1_000_000
+    elif "claude-3-opus" in model_lower:
+        # Claude 3 Opus: $15/$75 per 1M
+        cost = (prompt_tokens * 15 + completion_tokens * 75) / 1_000_000
+    elif "claude-3-sonnet" in model_lower:
+        # Claude 3 Sonnet: $3/$15 per 1M
+        cost = (prompt_tokens * 3 + completion_tokens * 15) / 1_000_000
+    elif "claude-3-haiku" in model_lower:
+        # Claude 3 Haiku: $0.25/$1.25 per 1M
+        cost = (prompt_tokens * 0.25 + completion_tokens * 1.25) / 1_000_000
+    elif "minimax" in model_lower:
+        # MiniMax: rough estimate $1/$2 per 1M
+        cost = (prompt_tokens * 1 + completion_tokens * 2) / 1_000_000
+    else:
+        # Local models (LM Studio, Ollama) or unknown: cost = 0
+        cost = 0.0
+
+    return total_tokens, cost
 
 
 __all__ = ["LLMIntelligence", "extract_leaked_tool_calls"]

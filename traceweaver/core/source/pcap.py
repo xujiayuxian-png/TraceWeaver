@@ -105,16 +105,31 @@ def _compute_key(fields: dict[str, Any], strategy: dict[str, Any] | None) -> str
 def parse_tshark_fields_output(
     text: str,
     *,
-    extra_fields: Sequence[str],
+    extra_fields: Sequence[str] | None = None,
     separator: str = "\t",
     key_strategy: dict[str, Any] | None = None,
+    max_records: int | None = None,
+    time_range: tuple[float, float] | None = None,
 ) -> list[Record]:
     """
-    Parse the TSV output of `tshark -T fields -E header=y`.
+    Parse tshark -T fields output into Records.
 
-    Exposed as a module-level function so tests can feed in canned
-    output without mocking subprocess. The first line must be the header
-    written by `-E header=y`; empty trailing lines are ignored.
+    Parameters
+    ----------
+    extra_fields:
+        Field names that appear after the universal columns in each line.
+    separator:
+        The field separator used in tshark output (must match -E separator=).
+    key_strategy:
+        Optional dict with mode/fields for computing Record.key.
+    max_records:
+        Maximum number of records to return (None = unlimited).
+    time_range:
+        Relative time window [start_s, end_s] from first frame (None = unlimited).
+
+    Returns
+    -------
+    List of Record objects sorted by seq (frame.number).
     """
     lines = [ln for ln in text.splitlines() if ln != ""]
     if not lines:
@@ -126,7 +141,12 @@ def parse_tshark_fields_output(
             f"got {header[: len(_UNIVERSAL_FIELDS)]!r}"
         )
     records: list[Record] = []
+    first_ts: float | None = None
+    emitted = 0
     for line in lines[1:]:
+        # max_records limit check
+        if max_records is not None and emitted >= max_records:
+            break
         cols = line.split(separator)
         # Pad short rows (tshark drops trailing empty fields sometimes).
         if len(cols) < len(header):
@@ -137,6 +157,14 @@ def parse_tshark_fields_output(
         except ValueError:
             # Junk row (e.g. a stderr blob that slipped in). Skip it.
             continue
+        # time_range filter (relative to first frame)
+        if time_range is not None:
+            if first_ts is None:
+                first_ts = ts
+            rel_ts = ts - first_ts
+            start_s, end_s = time_range
+            if rel_ts < start_s or rel_ts > end_s:
+                continue
         field_map: dict[str, Any] = {}
         for name, val in zip(header[len(_UNIVERSAL_FIELDS) :], cols[len(_UNIVERSAL_FIELDS) :]):
             field_map[name] = val
@@ -155,6 +183,7 @@ def parse_tshark_fields_output(
                 raw=line,
             )
         )
+        emitted += 1
     return records
 
 
@@ -223,6 +252,9 @@ class PcapSource(Source):
         decode_as: list[str] = list(opts.get("decode_as", []))
         key_strategy: dict[str, Any] | None = opts.get("key_strategy")
         separator = opts.get("field_separator", "\t")
+        # P1.3: slicing options for large pcaps
+        max_records: int | None = opts.get("max_records")
+        time_range: tuple[float, float] | None = opts.get("time_range")
 
         # Existence check is advisory; the runner may be a fake that
         # doesn't care about filesystem presence (tests).
@@ -257,6 +289,8 @@ class PcapSource(Source):
             extra_fields=list(seen),
             separator=separator,
             key_strategy=key_strategy,
+            max_records=max_records,
+            time_range=time_range,
         )
         return PcapSourceHandle(uri=uri, records=records)
 

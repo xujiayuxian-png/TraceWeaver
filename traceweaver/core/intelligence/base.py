@@ -56,6 +56,9 @@ class IntelligenceResponse(BaseModel):
     reasoning: str | None = None
     assistant_content: str = ""
     provider_raw: dict[str, Any] | None = None
+    # Telemetry (P1.1)
+    tokens_used: int | None = None  # Total tokens for this round (prompt + completion)
+    cost_usd: float | None = None   # Estimated cost for this round
 
 
 class Intelligence(ABC):

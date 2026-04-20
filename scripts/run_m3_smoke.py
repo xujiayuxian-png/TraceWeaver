@@ -182,6 +182,64 @@ def _check_08_sbi_failure(result: AgentResult) -> tuple[bool, str]:
     return True, "ok"
 
 
+def _check_02_registration_and_pdu_success(result: AgentResult) -> tuple[bool, str]:
+    """Registration + PDU session establishment success."""
+    ok, msg = _require_final(result)
+    if not ok:
+        return False, msg
+    fj = _final(result)
+    if fj.get("verdict") != "success":
+        return False, f"expected verdict=success, got {fj.get('verdict')!r}"
+    calls = _all_tool_calls(result)
+    # Should use PDU session related tools
+    if not any("pdu" in c.lower() or "session" in c.lower() for c in calls):
+        return False, f"expected PDU/session tool usage, got calls={calls}"
+    return True, "ok"
+
+
+def _check_05_pdu_session_reject(result: AgentResult) -> tuple[bool, str]:
+    """PDU session establishment reject (e.g., insufficient resources)."""
+    ok, msg = _require_final(result)
+    if not ok:
+        return False, msg
+    fj = _final(result)
+    if fj.get("verdict") not in ("failure", "unclear"):
+        return False, f"expected verdict in {{failure, unclear}}, got {fj.get('verdict')!r}"
+    # Evidence should mention PDU session reject or 5GSM cause
+    evidence = fj.get("evidence") or []
+    text = " ".join(str(e.get("event", "")).lower() for e in evidence)
+    if "pdu" not in text and "session" not in text and "5gsm" not in text:
+        return False, f"expected PDU session or 5GSM reference in evidence, got {evidence}"
+    return True, "ok"
+
+
+def _check_10_deregistration(result: AgentResult) -> tuple[bool, str]:
+    """Clean deregistration - verdict success with deregistration evidence."""
+    ok, msg = _require_final(result)
+    if not ok:
+        return False, msg
+    fj = _final(result)
+    if fj.get("verdict") != "success":
+        return False, f"expected verdict=success for clean deregistration, got {fj.get('verdict')!r}"
+    evidence = fj.get("evidence") or []
+    text = " ".join(str(e.get("event", "")).lower() for e in evidence)
+    if "deregist" not in text:
+        return False, f"expected deregistration evidence, got {evidence}"
+    return True, "ok"
+
+
+def _check_11_registration_retry(result: AgentResult) -> tuple[bool, str]:
+    """Registration with retry - eventual success after initial reject/failure."""
+    ok, msg = _require_final(result)
+    if not ok:
+        return False, msg
+    fj = _final(result)
+    # Retry scenario: eventual success
+    if fj.get("verdict") != "success":
+        return False, f"expected eventual success after retry, got {fj.get('verdict')!r}"
+    return True, "ok"
+
+
 # --- task catalogue --------------------------------------------------
 
 def build_tasks() -> list[SmokeTask]:
@@ -227,6 +285,35 @@ def build_tasks() -> list[SmokeTask]:
             description="SBI failure (AUSF down); diagnosis must reach SBI / HTTP / AUSF.",
             user_prompt=common_prompt,
             check=_check_08_sbi_failure,
+        ),
+        # Extended tasks for better coverage (P0-1.1)
+        SmokeTask(
+            name="T6_registration_pdu_success",
+            pcap="02_registration_and_pdu_session_success.pcapng",
+            description="Registration + PDU session success: full flow.",
+            user_prompt=common_prompt,
+            check=_check_02_registration_and_pdu_success,
+        ),
+        SmokeTask(
+            name="T7_pdu_session_reject",
+            pcap="05_pdu_session_reject.pcapng",
+            description="PDU session establishment reject.",
+            user_prompt=common_prompt,
+            check=_check_05_pdu_session_reject,
+        ),
+        SmokeTask(
+            name="T8_deregistration",
+            pcap="10_deregistration.pcapng",
+            description="Clean deregistration flow.",
+            user_prompt=common_prompt,
+            check=_check_10_deregistration,
+        ),
+        SmokeTask(
+            name="T9_registration_retry",
+            pcap="11_registration_retry.pcapng",
+            description="Registration with retry (eventual success).",
+            user_prompt=common_prompt,
+            check=_check_11_registration_retry,
         ),
     ]
 

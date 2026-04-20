@@ -29,6 +29,12 @@ from traceweaver.core.source.base import Record, SourceHandle
 
 Enricher = Callable[[Record], Record]
 
+# Forbidden judgment fields that enrichers must NOT produce
+# (These belong to LLM, not enrichers - platform-v2 red line)
+_FORBIDDEN_ENRICH_KEYS = frozenset(
+    {"verdict", "root_cause", "failure_point", "confidence"}
+)
+
 
 def apply_enrichers(record: Record, enrichers: list[Enricher]) -> Record:
     """Run the chain; return the final Record."""
@@ -38,6 +44,13 @@ def apply_enrichers(record: Record, enrichers: list[Enricher]) -> Record:
             raise RuntimeError(
                 f"enricher {getattr(fn, '__qualname__', fn)!r} violated "
                 "identity: (source, seq) must be preserved"
+            )
+        # Red line check: enrichers must not produce judgment fields
+        forbidden = _FORBIDDEN_ENRICH_KEYS & set(new_rec.fields.keys())
+        if forbidden:
+            raise RuntimeError(
+                f"enricher {getattr(fn, '__qualname__', fn)!r} produced "
+                f"forbidden fields (judgment belongs to LLM): {sorted(forbidden)}"
             )
         record = new_rec
     return record

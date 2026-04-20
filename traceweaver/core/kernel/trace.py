@@ -63,6 +63,9 @@ class AgentTrace(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     events: list[TraceEvent] = Field(default_factory=list)
+    # Total wall-clock seconds for the entire run() call (P1.1).
+    # Set by the kernel on every exit path; covers LLM + tool + overhead.
+    wall_clock_s: float = 0.0
 
     def rounds_used(self) -> int:
         return len(self.events)
@@ -90,8 +93,8 @@ class AgentTrace(BaseModel):
             e.cost_usd for e in self.events if e.cost_usd is not None
         )
 
-    def wall_clock_s(self) -> float:
-        """Total tool execution time (not LLM latency)."""
+    def tool_time_s(self) -> float:
+        """Sum of per-tool elapsed_s (subset of wall_clock_s)."""
         return sum(
             ex.elapsed_s for e in self.events for ex in e.tool_executions
         )

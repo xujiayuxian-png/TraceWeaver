@@ -435,22 +435,38 @@ def _extract_reasoning_details(msg: Any) -> str:
     return "\n".join(texts)
 
 
+def _get_usage_field(usage: Any, key: str) -> int:
+    """Read a field from usage, tolerating both dict and attribute styles."""
+    if usage is None:
+        return 0
+    if isinstance(usage, dict):
+        val = usage.get(key)
+    else:
+        val = getattr(usage, key, None)
+    try:
+        return int(val) if val is not None else 0
+    except (TypeError, ValueError):
+        return 0
+
+
 def _extract_usage(resp: Any, model: str) -> tuple[int | None, float | None]:
     """
     Extract token usage and estimated cost from litellm response.
     Returns (tokens_used, cost_usd) or (None, None) if not available.
+
+    litellm returns `usage` as either a Pydantic model (OpenAI-style)
+    or a plain dict depending on provider; we accept both.
     """
     usage = getattr(resp, "usage", None)
     if usage is None:
         return None, None
 
-    # Try to get token counts
-    prompt_tokens = getattr(usage, "prompt_tokens", None) or usage.get("prompt_tokens", 0) if isinstance(usage, dict) else 0  # type: ignore
-    completion_tokens = getattr(usage, "completion_tokens", None) or usage.get("completion_tokens", 0) if isinstance(usage, dict) else 0  # type: ignore
-    total_tokens = getattr(usage, "total_tokens", None) or usage.get("total_tokens", 0) if isinstance(usage, dict) else 0  # type: ignore
+    prompt_tokens = _get_usage_field(usage, "prompt_tokens")
+    completion_tokens = _get_usage_field(usage, "completion_tokens")
+    total_tokens = _get_usage_field(usage, "total_tokens")
 
     if not total_tokens and (prompt_tokens or completion_tokens):
-        total_tokens = (prompt_tokens or 0) + (completion_tokens or 0)
+        total_tokens = prompt_tokens + completion_tokens
 
     if not total_tokens:
         return None, None

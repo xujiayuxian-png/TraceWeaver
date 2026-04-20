@@ -72,6 +72,8 @@ class _LoopState:
     # Used to short-circuit identical repeat calls so a small LLM
     # cannot burn its round budget looping on the same query.
     seen_calls: dict[tuple[str, str], int] = field(default_factory=dict)
+    # Start time of run() for wall_clock_s calculation (P1.1).
+    t0: float = 0.0
 
     def append_message(self, msg: Message) -> None:
         self.messages.append(msg)
@@ -106,7 +108,10 @@ class AgentKernel:
         ctx: ToolContext | None = None,
     ) -> AgentResult:
         ctx = ctx or ToolContext()
-        state = _LoopState(messages=[Message(role="user", content=user_request)])
+        state = _LoopState(
+            messages=[Message(role="user", content=user_request)],
+            t0=time.perf_counter(),
+        )
         tools_spec = self.registry.specs()
 
         # Reserve the last two rounds for finalization: strip tools from
@@ -155,10 +160,7 @@ class AgentKernel:
 
             self._handle_tool_calls(round_idx, resp, task, state, ctx)
 
-        return AgentResult(
-            stop_reason="max_rounds",
-            trace=AgentTrace(events=state.events),
-        )
+        return _finalize_result(state, stop_reason="max_rounds")
 
     # ---- M2 convenience: drive the loop from a loaded Profile ------------
 
@@ -229,15 +231,11 @@ class AgentKernel:
                     cost_usd=resp.cost_usd,
                 )
             )
-            trace = AgentTrace(events=state.events)
-            return AgentResult(
+            return _finalize_result(
+                state,
                 stop_reason="final",
                 final_text=resp.final_text,
                 final_json=resp.final_json,
-                trace=trace,
-                total_tokens=trace.total_tokens() or None,
-                total_cost_usd=trace.total_cost_usd() or None,
-                wall_clock_s=trace.wall_clock_s() or None,
             )
 
         # Schema mismatch: record the failed attempt, push a corrective
@@ -276,11 +274,11 @@ class AgentKernel:
         )
         state.schema_retries += 1
         if state.schema_retries >= 2:
-            return AgentResult(
+            return _finalize_result(
+                state,
                 stop_reason="schema_retry_exhausted",
                 final_text=resp.final_text,
                 final_json=resp.final_json,
-                trace=AgentTrace(events=state.events),
             )
         return None
 
@@ -384,11 +382,41 @@ class AgentKernel:
     def _fail(
         state: _LoopState, stop_reason: StopReason, error: str
     ) -> AgentResult:
-        return AgentResult(
-            stop_reason=stop_reason,
-            trace=AgentTrace(events=state.events),
-            error=error,
-        )
+        return _finalize_result(state, stop_reason=stop_reason, error=error)
+
+
+def _finalize_result(
+    state: _LoopState,
+    *,
+    stop_reason: StopReason,
+    final_text: str | None = None,
+    final_json: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> AgentResult:
+    """
+    Build the final `AgentResult` for any exit path.
+
+    Always attaches:
+      - wall_clock_s (real time from run() start to now)
+      - total_tokens / total_cost_usd (aggregated from events, None if absent)
+
+    Called from the main loop (max_rounds), _handle_final (final and
+    schema_retry_exhausted), and _fail (intelligence_error / tool_error).
+    """
+    wall_clock_s = time.perf_counter() - state.t0 if state.t0 else 0.0
+    trace = AgentTrace(events=state.events, wall_clock_s=wall_clock_s)
+    tokens = trace.total_tokens()
+    cost = trace.total_cost_usd()
+    return AgentResult(
+        stop_reason=stop_reason,
+        final_text=final_text,
+        final_json=final_json,
+        trace=trace,
+        error=error,
+        total_tokens=tokens if tokens > 0 else None,
+        total_cost_usd=cost if cost > 0 else None,
+        wall_clock_s=wall_clock_s,
+    )
 
 
 def _canonical_args(args: dict[str, Any] | None) -> str:

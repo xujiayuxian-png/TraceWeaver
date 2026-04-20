@@ -246,7 +246,8 @@ def build_tasks() -> list[SmokeTask]:
     common_prompt = (
         "This is a capture from an Open5GS 5G core. Diagnose what "
         "happened to the UE (or UEs) and return the required JSON "
-        "verdict. Follow the workflow: start with list_ue_sessions, "
+        "verdict. Follow the workflow: start with summarize_capture, "
+        "use its capture-wide signals to choose the right UE or NF path, "
         "then drill down with the other tools as needed. Every "
         "evidence entry must come from a tool result."
     )

@@ -1,0 +1,506 @@
+{
+  "timestamp": "2026-04-20T07:22:53.421593+00:00",
+  "model": "openai/qwen3.5-9b@q8_k_xl",
+  "api_base": "http://127.0.0.1:1234/v1",
+  "passed": 6,
+  "total": 9,
+  "total_tokens": 476741,
+  "total_cost_usd": null,
+  "total_wall_clock_s": 363.53,
+  "results": [
+    {
+      "task": "T1_registration_success",
+      "pcap": "01_registration_success.pcapng",
+      "description": "Clean registration: verdict must be success.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "UE successfully completed registration flow with authentication and context setup in Open5GS 5G core.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 141,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE initiated registration"
+          },
+          {
+            "seq": 296,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "AMF requested authentication from UE"
+          },
+          {
+            "seq": 297,
+            "event": "AUTHENTICATION_RESPONSE",
+            "note": "UE responded with valid authentication credentials"
+          },
+          {
+            "seq": 329,
+            "event": "SECURITY_MODE_COMMAND",
+            "note": "Security mode command sent to establish encryption/integrity"
+          },
+          {
+            "seq": 467,
+            "event": "NGAP_INITIAL_CONTEXT_SETUP",
+            "note": "AMF initiated initial context setup for UE"
+          },
+          {
+            "seq": 471,
+            "event": "NGAP_DOWNLINK_NAS_TRANSPORT",
+            "note": "Final downlink NAS transport confirming registration success"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_sbi_calls",
+        "get_pfcp_exchanges",
+        "finalize"
+      ],
+      "rounds_used": 7,
+      "tool_calls_total": 6,
+      "elapsed_s": 39.05,
+      "total_tokens": 53984,
+      "total_cost_usd": null,
+      "wall_clock_s": 38.77
+    },
+    {
+      "task": "T2_registration_reject",
+      "pcap": "03_registration_reject.pcapng",
+      "description": "REGISTRATION_REJECT; evidence must include the reject frame.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "Three UEs attempted registration but all were rejected due to inability to derive UE identity from network subscription data.",
+        "failure_point": "REGISTRATION_REJECT at seq 241 (UE ran_ue_ngap_id=1) with mm_cause 9",
+        "root_cause": "5GMM cause 9 'UE identity cannot be derived by the network' - SBI calls to AUSF, UDM/UDR returned 404 for subscription/authentication data lookup",
+        "evidence": [
+          {
+            "seq": 241,
+            "event": "REGISTRATION_REJECT",
+            "note": "NAS reject with mm_cause=9 indicating UE identity cannot be derived"
+          },
+          {
+            "seq": 171,
+            "event": "HTTP POST /nausf-auth/v1/ue-authentications status 404",
+            "note": "AUSF returned 404 - no authentication data found for this UE"
+          },
+          {
+            "seq": 209,
+            "event": "HTTP GET /nudr-dr/v2/subscription-data/imsi-001010099999999/authentication-data/status 404",
+            "note": "UDR returned 404 - no subscription data found for this IMSI"
+          },
+          {
+            "seq": 587,
+            "event": "REGISTRATION_REJECT",
+            "note": "Same rejection pattern observed for UE ran_ue_ngap_id=2"
+          },
+          {
+            "seq": 886,
+            "event": "HTTP POST /nausf-auth/v1/ue-authentications status 404",
+            "note": "Third UE (ran_ue_ngap_id=3) also failed with AUSF 404"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning",
+        "get_sbi_calls",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 7,
+      "tool_calls_total": 6,
+      "elapsed_s": 26.7,
+      "total_tokens": 39055,
+      "total_cost_usd": null,
+      "wall_clock_s": 26.43
+    },
+    {
+      "task": "T3_authentication_failure",
+      "pcap": "04_authentication_failure.pcapng",
+      "description": "AUTHENTICATION_FAILURE (MAC). Root cause must mention MAC/authentication.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE registration failed due to MAC authentication failure (5GMM cause 20) during the initial attach procedure.",
+        "failure_point": "AUTHENTICATION_FAILURE at seq 257 with mm_cause=20 (MAC failure)",
+        "root_cause": "5GMM cause 20 MAC_FAILURE: AKA authentication failed at the UE",
+        "evidence": [
+          {
+            "seq": 227,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE initiated registration"
+          },
+          {
+            "seq": 256,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "AMF requested authentication from UE"
+          },
+          {
+            "seq": 257,
+            "event": "AUTHENTICATION_FAILURE",
+            "note": "Authentication failed with mm_cause=20 (MAC failure)"
+          },
+          {
+            "seq": 259,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "Network released UE context after auth failure"
+          },
+          {
+            "seq": 261,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "Final cleanup of UE context"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning",
+        "get_sbi_calls",
+        "get_pfcp_exchanges"
+      ],
+      "rounds_used": 7,
+      "tool_calls_total": 6,
+      "elapsed_s": 29.83,
+      "total_tokens": 39258,
+      "total_cost_usd": null,
+      "wall_clock_s": 29.55
+    },
+    {
+      "task": "T4_pfcp_failure",
+      "pcap": "07_pfcp_failure.pcapng",
+      "description": "UPF unreachable; diagnosis must reach PFCP/UPF.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "PDU session setup for UE IMSI 001010000000210 failed due to missing SMF response and subsequent policy/subscription provisioning failures.",
+        "failure_point": "POST /nsmf-pdusession/v1/sm-contexts (stream_id 35) returned status null, indicating no successful PFCP/NAS session establishment from SMF",
+        "root_cause": "SMF did not respond to the Create SM Context request, causing downstream failures in UDM subscription update and PCF policy provisioning.",
+        "evidence": [
+          {
+            "seq": 3958,
+            "event": "POST /npcf-smpolicycontrol/v1/sm-policies",
+            "note": "Status null - PCF failed to provision policy due to missing SM context"
+          },
+          {
+            "seq": 3974,
+            "event": "POST /nbsf-management/v1/pcfBindings",
+            "note": "Status null - NBSF binding creation failed"
+          },
+          {
+            "seq": 3955,
+            "event": "POST /nudm-sdm/v2/imsi-001010000000210/sdm-subscriptions",
+            "note": "Status null - UDM subscription update failed due to missing SM context"
+          },
+          {
+            "seq": 3935,
+            "event": "POST /nsmf-pdusession/v1/sm-contexts",
+            "note": "Status null - SMF did not respond to Create SM Context request"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_pfcp_exchanges",
+        "get_sbi_calls",
+        "list_ue_sessions"
+      ],
+      "rounds_used": 7,
+      "tool_calls_total": 6,
+      "elapsed_s": 40.71,
+      "total_tokens": 63549,
+      "total_cost_usd": null,
+      "wall_clock_s": 40.35
+    },
+    {
+      "task": "T5_sbi_failure",
+      "pcap": "08_sbi_failure.pcapng",
+      "description": "SBI failure (AUSF down); diagnosis must reach SBI / HTTP / AUSF.",
+      "ok": false,
+      "reason": "expected SBI / HTTP / AUSF / UDM cue in diagnosis; calls=['summarize_capture', 'list_ue_sessions', 'get_ue_timeline', 'get_nas_cause_meaning', 'search_knowledge', 'search_knowledge']",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE registration failed twice with 5GMM cause 90 (registration reject)",
+        "failure_point": "seq 1548: REGISTRATION_REJECT with mm_cause=90",
+        "root_cause": "5GMM cause 90 indicates a registration rejection; the UE attempted to register twice but was rejected both times by the AMF",
+        "evidence": [
+          {
+            "seq": 241,
+            "event": "REGISTRATION_REQUEST",
+            "note": "First registration attempt from UE"
+          },
+          {
+            "seq": 700,
+            "event": "REGISTRATION_REJECT",
+            "note": "First rejection with mm_cause=90"
+          },
+          {
+            "seq": 1117,
+            "event": "REGISTRATION_REQUEST",
+            "note": "Retry registration attempt"
+          },
+          {
+            "seq": 1548,
+            "event": "REGISTRATION_REJECT",
+            "note": "Second rejection with mm_cause=90 - final failure"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning",
+        "search_knowledge",
+        "search_knowledge"
+      ],
+      "rounds_used": 7,
+      "tool_calls_total": 6,
+      "elapsed_s": 20.53,
+      "total_tokens": 32018,
+      "total_cost_usd": null,
+      "wall_clock_s": 20.25
+    },
+    {
+      "task": "T6_registration_pdu_success",
+      "pcap": "02_registration_and_pdu_session_success.pcapng",
+      "description": "Registration + PDU session success: full flow.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "UE successfully registered and established a PDU session with no failures",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 237,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE initiated registration"
+          },
+          {
+            "seq": 314,
+            "event": "AUTHENTICATION_RESPONSE",
+            "note": "Authentication completed successfully"
+          },
+          {
+            "seq": 652,
+            "event": "NGAP_PDU_SESSION_RESOURCE_SETUP",
+            "note": "PDU session resource setup completed for pdu_session_id=1"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "query_records",
+        "submit_verdict"
+      ],
+      "rounds_used": 6,
+      "tool_calls_total": 5,
+      "elapsed_s": 23.34,
+      "total_tokens": 29048,
+      "total_cost_usd": null,
+      "wall_clock_s": 23.05
+    },
+    {
+      "task": "T7_pdu_session_reject",
+      "pcap": "05_pdu_session_reject.pcapng",
+      "description": "PDU session establishment reject.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE successfully registered but PDU session setup failed due to invalid DNN/APN causing 400 Bad Request errors from SMF and UDM.",
+        "failure_point": "PDU_SESSION_SETUP_REQUEST at seq 29 - no completion event, followed by multiple SBI 400 errors for sm-context creation",
+        "root_cause": "Invalid DNN/APN 'traceweaver-invalid-apn' causing SMF and UDM to reject PDU session setup requests with HTTP 400 Bad Request",
+        "evidence": [
+          {
+            "seq": 29,
+            "event": "PDU_SESSION_SETUP_REQUEST",
+            "note": "Last event for UE - no completion"
+          },
+          {
+            "seq": 1388,
+            "event": "HTTP POST /nsmf-pdusession/v1/sm-contexts status=400",
+            "note": "SMF rejected sm-context creation with 400 Bad Request"
+          },
+          {
+            "seq": 1391,
+            "event": "HTTP GET /nudm-sdm/v2/imsi-.../sm-data status=400",
+            "note": "UDM also returned 400 for subscription data queries"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_sbi_calls",
+        "get_ue_timeline",
+        "finalize"
+      ],
+      "rounds_used": 8,
+      "tool_calls_total": 6,
+      "elapsed_s": 66.76,
+      "total_tokens": 91241,
+      "total_cost_usd": null,
+      "wall_clock_s": 66.45
+    },
+    {
+      "task": "T8_deregistration",
+      "pcap": "10_deregistration.pcapng",
+      "description": "Clean deregistration flow.",
+      "ok": false,
+      "reason": "expected deregistration evidence, got [{'seq': 254, 'event': 'REGISTRATION_REQUEST', 'note': 'UE1 initiated registration successfully'}, {'seq': 382, 'event': 'NGAP_INITIAL_CONTEXT_SETUP', 'note': 'Initial context setup completed for UE1'}, {'seq': 449, 'event': 'NGAP_PDU_SESSION_RESOURCE_SETUP', 'note': 'PDU session resource setup initiated for UE1 (pdu_session_id=1)'}, {'seq': 453, 'event': 'NGAP_PDU_SESSION_RESOURCE_SETUP', 'note': 'PDU session resource setup response received for UE1'}, {'seq': 1121, 'event': 'NGAP_DOWNLINK_NAS_TRANSPORT', 'note': 'UE1 initiated deregistration (downlink NAS transport)'}, {'seq': 1138, 'event': 'NGAP_UE_CONTEXT_RELEASE', 'note': 'UE context release completed for UE1'}, {'seq': 1142, 'event': 'REGISTRATION_REQUEST', 'note': 'UE2 initiated registration successfully'}, {'seq': 1259, 'event': 'NGAP_INITIAL_CONTEXT_SETUP', 'note': 'Initial context setup completed for UE2'}, {'seq': 1323, 'event': 'NGAP_PDU_SESSION_RESOURCE_SETUP', 'note': 'PDU session resource setup initiated for UE2 (pdu_session_id=1)'}, {'seq': 1327, 'event': 'NGAP_PDU_SESSION_RESOURCE_SETUP', 'note': 'PDU session resource setup response received for UE2'}]",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "Two UEs successfully registered and established PDU sessions with the Open5GS core; UE1 later deregistered cleanly while UE2's session setup completed before capture ended.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 254,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE1 initiated registration successfully"
+          },
+          {
+            "seq": 382,
+            "event": "NGAP_INITIAL_CONTEXT_SETUP",
+            "note": "Initial context setup completed for UE1"
+          },
+          {
+            "seq": 449,
+            "event": "NGAP_PDU_SESSION_RESOURCE_SETUP",
+            "note": "PDU session resource setup initiated for UE1 (pdu_session_id=1)"
+          },
+          {
+            "seq": 453,
+            "event": "NGAP_PDU_SESSION_RESOURCE_SETUP",
+            "note": "PDU session resource setup response received for UE1"
+          },
+          {
+            "seq": 1121,
+            "event": "NGAP_DOWNLINK_NAS_TRANSPORT",
+            "note": "UE1 initiated deregistration (downlink NAS transport)"
+          },
+          {
+            "seq": 1138,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "UE context release completed for UE1"
+          },
+          {
+            "seq": 1142,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE2 initiated registration successfully"
+          },
+          {
+            "seq": 1259,
+            "event": "NGAP_INITIAL_CONTEXT_SETUP",
+            "note": "Initial context setup completed for UE2"
+          },
+          {
+            "seq": 1323,
+            "event": "NGAP_PDU_SESSION_RESOURCE_SETUP",
+            "note": "PDU session resource setup initiated for UE2 (pdu_session_id=1)"
+          },
+          {
+            "seq": 1327,
+            "event": "NGAP_PDU_SESSION_RESOURCE_SETUP",
+            "note": "PDU session resource setup response received for UE2"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_ue_timeline",
+        "get_sbi_calls",
+        "get_pfcp_exchanges"
+      ],
+      "rounds_used": 7,
+      "tool_calls_total": 6,
+      "elapsed_s": 38.76,
+      "total_tokens": 56977,
+      "total_cost_usd": null,
+      "wall_clock_s": 38.46
+    },
+    {
+      "task": "T9_registration_retry",
+      "pcap": "11_registration_retry.pcapng",
+      "description": "Registration with retry (eventual success).",
+      "ok": false,
+      "reason": "expected eventual success after retry, got 'failure'",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE with ran_ue_ngap_id=1 failed authentication due to MAC failure (5GMM cause 20), while another UE (ran_ue_ngap_id=2) successfully registered.",
+        "failure_point": "AUTHENTICATION_FAILURE at seq 374 for ran_ue_ngap_id=1 with mm_cause=20",
+        "root_cause": "5GMM cause 20 MAC failure: AKA authentication failed at the UE",
+        "evidence": [
+          {
+            "seq": 374,
+            "event": "AUTHENTICATION_FAILURE",
+            "note": "Authentication failure with mm_cause=20 (MAC failure) for ran_ue_ngap_id=1"
+          },
+          {
+            "seq": 296,
+            "event": "REGISTRATION_REQUEST",
+            "note": "Initial registration request from UE id=1 that led to authentication failure"
+          },
+          {
+            "seq": 376,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "UE context released after failed authentication for ran_ue_ngap_id=1"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "get_ue_timeline",
+        "get_nas_cause_meaning",
+        "get_ue_timeline",
+        "get_sbi_calls",
+        "finalize",
+        "finalize"
+      ],
+      "rounds_used": 7,
+      "tool_calls_total": 7,
+      "elapsed_s": 80.63,
+      "total_tokens": 71611,
+      "total_cost_usd": null,
+      "wall_clock_s": 80.22
+    }
+  ]
+}

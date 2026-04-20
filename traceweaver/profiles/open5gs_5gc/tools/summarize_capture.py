@@ -37,8 +37,12 @@ _DEREGISTRATION_EVENTS = {
     "DEREGISTRATION_REQUEST_UE_ORIG", "DEREGISTRATION_ACCEPT_UE_ORIG",
     "DEREGISTRATION_REQUEST_UE_TERM", "DEREGISTRATION_ACCEPT_UE_TERM",
 }
+_DEACTIVATION_EVENTS = {
+    "DEACTIVATION_REQUEST", "DEACTIVATION_RESPONSE", "DEACTIVATION_COMPLETE",
+}
 _AUTH_FAILURE_EVENTS = {"AUTHENTICATION_FAILURE", "AUTHENTICATION_REJECT"}
 _SERVICE_REJECT_EVENTS = {"SERVICE_REJECT"}
+_UE_RELEASE_EVENTS = {"NGAP_UE_CONTEXT_RELEASE"}
 _PDU_SETUP_REQUEST_EVENTS = {"PDU_SESSION_ESTABLISHMENT_REQUEST"}
 _PDU_SETUP_COMPLETE_EVENTS = {
     "PDU_SESSION_ESTABLISHMENT_ACCEPT",
@@ -160,10 +164,35 @@ class SummarizeCaptureTool(Tool):
         pdu_setup_completed = any(n in ev_set for n in _PDU_SETUP_COMPLETE_EVENTS)
         pdu_rejected = any(n in ev_set for n in _PDU_REJECT_EVENTS)
 
+        has_deactivation = bool(ev_set & _DEACTIVATION_EVENTS)
+        has_deregistration = bool(ev_set & _DEREGISTRATION_EVENTS)
+        has_ue_context_release = bool(ev_set & _UE_RELEASE_EVENTS)
+
+        retry_pattern_present = False
+        if len(ue_overview) > 1:
+            saw_early_failure = False
+            saw_later_fresh_start = False
+            saw_later_success = False
+            for idx, ue in enumerate(ue_overview):
+                events = set(ue["events"])
+                if events & (_AUTH_FAILURE_EVENTS | _REGISTRATION_REJECT_EVENTS):
+                    saw_early_failure = True
+                if idx > 0 and "REGISTRATION_REQUEST" in events:
+                    saw_later_fresh_start = True
+                if idx > 0 and (events & {"REGISTRATION_ACCEPT", "REGISTRATION_COMPLETE"}):
+                    saw_later_success = True
+            retry_pattern_present = (
+                saw_early_failure and saw_later_fresh_start and saw_later_success
+            )
+
         signals = {
             "has_registration": bool(ev_set & _REGISTRATION_EVENTS),
             "has_registration_reject": bool(ev_set & _REGISTRATION_REJECT_EVENTS),
-            "has_deregistration": bool(ev_set & _DEREGISTRATION_EVENTS),
+            "has_deregistration": has_deregistration,
+            "has_deactivation": has_deactivation,
+            "has_deregistration_or_deactivation": (
+                has_deregistration or has_deactivation
+            ),
             "has_authentication_failure": bool(ev_set & _AUTH_FAILURE_EVENTS),
             "has_service_reject": bool(ev_set & _SERVICE_REJECT_EVENTS),
             "pdu_session_setup_started": pdu_setup_started,
@@ -174,11 +203,40 @@ class SummarizeCaptureTool(Tool):
             "pfcp_setup_unbalanced": (
                 pfcp_setup_reqs > 0 and pfcp_setup_reqs != pfcp_setup_resps
             ),
+            "has_sbi_http_failure": has_http_5xx or has_http_4xx,
             "has_sbi_http_5xx": has_http_5xx,
             "has_sbi_http_4xx": has_http_4xx,
+            "has_ue_context_release": has_ue_context_release,
             "ran_ue_ngap_id_count": len(ue_overview),
             "multiple_ran_ue_ngap_ids": len(ue_overview) > 1,
+            "retry_pattern_present": retry_pattern_present,
+            "likely_pfcp_failure": (
+                pfcp_setup_reqs > 0 and pfcp_setup_reqs != pfcp_setup_resps
+            ),
+            "likely_sbi_failure": has_http_5xx or has_http_4xx,
         }
+
+        verdict_guardrails: list[str] = []
+        if signals["likely_pfcp_failure"]:
+            verdict_guardrails.append(
+                "PFCP session setup requests are not balanced by responses; "
+                "do not issue a success verdict before checking get_pfcp_exchanges."
+            )
+        if signals["likely_sbi_failure"]:
+            verdict_guardrails.append(
+                "SBI HTTP failures are present; inspect get_sbi_calls before "
+                "finalizing any success verdict."
+            )
+        if signals["has_deregistration_or_deactivation"]:
+            verdict_guardrails.append(
+                "Capture contains deregistration/deactivation activity; a "
+                "pure registration-success summary is incomplete."
+            )
+        if signals["retry_pattern_present"]:
+            verdict_guardrails.append(
+                "Multiple RAN_UE_NGAP_IDs plus early failure and later success "
+                "suggest a retry; do not stop at the first failed attempt."
+            )
 
         data: dict[str, Any] = {
             "total_records": total,
@@ -189,13 +247,15 @@ class SummarizeCaptureTool(Tool):
             "http_status_inventory": dict(http_status_counts) if http_status_counts else None,
             "ue_overview": ue_overview,
             "capture_signals": signals,
+            "verdict_guardrails": verdict_guardrails,
             "_interpretation_hint": (
                 "Reconcile your verdict with capture_signals before "
                 "finalizing. Examples of contradictions you MUST "
-                "investigate: (a) verdict=success but has_deregistration "
-                "is true and pdu_session_setup_completed is false; "
+                "investigate: (a) verdict=success but has_deregistration_or_deactivation "
+                "is true; "
                 "(b) verdict=success but pfcp_setup_unbalanced is true; "
-                "(c) two verdicts for two ran_ue_ngap_ids when they may "
+                "(c) verdict=success but has_sbi_http_failure is true; "
+                "(d) two verdicts for two ran_ue_ngap_ids when they may "
                 "actually be the same UE retrying — check if one ends in "
                 "failure and the other starts fresh with REGISTRATION_REQUEST."
             ),

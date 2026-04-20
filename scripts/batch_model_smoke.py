@@ -17,49 +17,100 @@ import requests
 LMSTUDIO_BASE = "http://127.0.0.1:1234"
 SMOKE_SCRIPT = Path(__file__).parent / "run_m3_smoke.py"
 
-# Models to test: (lmstudio_load_id, litellm_call_id, display_name)
+# Models to test: (lmstudio_key, litellm_model_id, display_name)
+# IMPORTANT: litellm_model_id must be "openai/<full_lmstudio_key>" to prevent
+# LM Studio from JIT-loading a different variant (e.g. q4_k_m when we loaded Q8).
 MODELS = [
-    ("zai-org/glm-4.7-flash", "openai/glm-4.7-flash", "GLM-4.7-Flash"),
-    ("google/gemma-4-26b-a4b", "openai/gemma-4-26b-a4b", "Gemma-4-26B-A4B"),
-    ("qwen/qwen3-14b", "openai/qwen3-14b", "Qwen3-14B"),
-    ("google/gemma-4-e4b", "openai/gemma-4-e4b", "Gemma-4-E4B"),
-    ("openai/gpt-oss-20b", "openai/gpt-oss-20b", "GPT-OSS-20B"),
-    ("qwen3.5-9b@q5_k_m", "openai/qwen3.5-9b-q5", "Qwen3.5-9B-Q5KM"),
-    ("qwen3.5-9b@q8_k_xl", "openai/qwen3.5-9b-q8xl", "Qwen3.5-9B-Q8XL"),
-    ("qwen/qwen3.5-9b", "openai/qwen3.5-9b", "Qwen3.5-9B-Q8"),
+    ("qwen/qwen3.5-9b", "openai/qwen/qwen3.5-9b", "Qwen3.5-9B-Q8"),
+    ("qwen/qwen3-14b", "openai/qwen/qwen3-14b", "Qwen3-14B"),
+    ("openai/gpt-oss-20b", "openai/openai/gpt-oss-20b", "GPT-OSS-20B"),
+    ("google/gemma-4-26b-a4b", "openai/google/gemma-4-26b-a4b", "Gemma-4-26B-A4B"),
+    ("google/gemma-4-e4b", "openai/google/gemma-4-e4b", "Gemma-4-E4B"),
+    ("qwen3.5-9b@q5_k_m", "openai/qwen3.5-9b@q5_k_m", "Qwen3.5-9B-Q5KM"),
+    ("qwen3.5-9b@q8_k_xl", "openai/qwen3.5-9b@q8_k_xl", "Qwen3.5-9B-Q8XL"),
+    ("zai-org/glm-4.7-flash", "openai/zai-org/glm-4.7-flash", "GLM-4.7-Flash"),
 ]
 
 
-def unload_all_models() -> bool:
-    """Unload current model to free VRAM."""
+def get_loaded_model_key() -> str | None:
+    """Get the key of currently loaded model."""
     try:
-        resp = requests.post(f"{LMSTUDIO_BASE}/api/v0/model/unload", timeout=30)
-        return resp.status_code == 200
+        resp = requests.get(f"{LMSTUDIO_BASE}/api/v1/models", timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            for m in data.get("models", []):
+                if m.get("loaded_instances"):
+                    return m.get("key")
+        return None
     except Exception as e:
-        print(f"  [unload] warning: {e}")
-        return False
+        print(f"  [check] warning: {e}")
+        return None
 
 
-def load_model(model_id: str) -> bool:
-    """Load a model by ID."""
+def get_all_loaded_instances() -> list[str]:
+    """Get all loaded model instance IDs."""
+    try:
+        resp = requests.get(f"{LMSTUDIO_BASE}/api/v1/models", timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            instances = []
+            for m in data.get("models", []):
+                for inst in m.get("loaded_instances", []):
+                    instances.append(inst.get("id"))
+            return instances
+        return []
+    except Exception as e:
+        print(f"  [check] warning: {e}")
+        return []
+
+
+def unload_all_models() -> bool:
+    """Unload ALL loaded model instances using v1 API."""
+    instances = get_all_loaded_instances()
+    if not instances:
+        print("  [unload] no models loaded")
+        return True
+    
+    success = True
+    for inst_id in instances:
+        try:
+            resp = requests.post(
+                f"{LMSTUDIO_BASE}/api/v1/models/unload",
+                json={"instance_id": inst_id},
+                timeout=30
+            )
+            if resp.status_code == 200:
+                print(f"  [unload] success: {inst_id}")
+            else:
+                print(f"  [unload] failed {inst_id}: {resp.status_code}")
+                success = False
+        except Exception as e:
+            print(f"  [unload] error {inst_id}: {e}")
+            success = False
+    return success
+
+
+def load_model(model_key: str) -> bool:
+    """Load a model by key using v1 API."""
     try:
         resp = requests.post(
-            f"{LMSTUDIO_BASE}/api/v0/model/load",
-            json={"model": model_id},
-            timeout=120
+            f"{LMSTUDIO_BASE}/api/v1/models/load",
+            json={
+                "model": model_key,
+                "context_length": 8192,
+                "flash_attention": True
+            },
+            timeout=300  # Loading can take a while
         )
         if resp.status_code == 200:
-            # Wait for model to be ready
-            for _ in range(30):
+            result = resp.json()
+            print(f"  [load] loaded in {result.get('load_time_seconds', '?')}s")
+            # Wait a bit for model to be fully ready
+            for i in range(10):
                 time.sleep(1)
-                try:
-                    check = requests.get(f"{LMSTUDIO_BASE}/v1/models", timeout=10)
-                    if check.status_code == 200:
-                        data = check.json()
-                        if any(m.get("id") == model_id for m in data.get("data", [])):
-                            return True
-                except:
-                    pass
+                loaded = get_loaded_model_key()
+                if loaded == model_key:
+                    return True
             return False
         else:
             print(f"  [load] failed: {resp.status_code} - {resp.text}")
@@ -133,6 +184,11 @@ def main():
     if args.only:
         models = [m for m in MODELS if args.only in m[0] or args.only in m[1]]
     
+    # Force cleanup at start
+    print("[Batch Smoke] Force unloading any existing models...")
+    unload_all_models()
+    time.sleep(3)
+    
     print(f"[Batch Smoke] Testing {len(models)} models")
     print(f"[Batch Smoke] Reports: {args.report_dir}")
     print()
@@ -143,10 +199,10 @@ def main():
         print(f"  load_id: {load_id}")
         print(f"  call_id: {call_id}")
         
-        # Unload previous
+        # Unload previous - double check
         print("  -> Unloading previous model...")
         unload_all_models()
-        time.sleep(2)
+        time.sleep(3)  # Wait longer for VRAM release
         
         # Load new model
         print("  -> Loading model...")

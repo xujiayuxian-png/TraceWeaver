@@ -1,0 +1,50 @@
+﻿[
+    {
+        "elapsed_s":  null,
+        "model":  "openai/qwen3.5-9b@q5_k_m",
+        "total":  9,
+        "passed":  3
+    },
+    {
+        "elapsed_s":  null,
+        "model":  "openai/google/gemma-4-26b-a4b",
+        "total":  9,
+        "passed":  3
+    },
+    {
+        "elapsed_s":  null,
+        "model":  "openai/qwen/qwen3.5-9b",
+        "total":  9,
+        "passed":  4
+    },
+    {
+        "elapsed_s":  null,
+        "model":  "openai/qwen3.5-9b@q8_k_xl",
+        "total":  9,
+        "passed":  4
+    },
+    {
+        "elapsed_s":  null,
+        "model":  "openai/zai-org/glm-4.7-flash",
+        "total":  9,
+        "passed":  4
+    },
+    {
+        "elapsed_s":  null,
+        "model":  "openai/openai/gpt-oss-20b",
+        "total":  9,
+        "passed":  4
+    },
+    {
+        "elapsed_s":  null,
+        "model":  "openai/google/gemma-4-e4b",
+        "total":  9,
+        "passed":  4
+    },
+    {
+        "elapsed_s":  null,
+        "model":  "openai/qwen/qwen3-14b",
+        "total":  9,
+        "passed":  4
+    }
+]

@@ -72,6 +72,21 @@ def test_has_deregistration_flag(enriched_handle):
     assert signals["has_deregistration"] is True
 
 
+def test_has_deactivation_flag(enriched_handle):
+    rec1 = make_record(seq=1, ran="1", mm_type=65)
+    rec2 = make_record(seq=2, ran="1")
+    rec2.fields["event"] = "DEACTIVATION_REQUEST"
+    handle = enriched_handle([rec1, rec2])
+    result = _run(handle)
+    signals = result.data["capture_signals"]
+    assert signals["has_deactivation"] is True
+    assert signals["has_deregistration_or_deactivation"] is True
+    assert any(
+        "deregistration/deactivation" in g
+        for g in result.data["verdict_guardrails"]
+    )
+
+
 def test_pfcp_setup_unbalanced_flag(enriched_handle):
     """T4-style scenario: PFCP SETUP REQUEST with no matching RESPONSE."""
     handle = enriched_handle([
@@ -85,6 +100,8 @@ def test_pfcp_setup_unbalanced_flag(enriched_handle):
     assert signals["pfcp_setup_request_count"] == 1
     assert signals["pfcp_setup_response_count"] == 0
     assert signals["pfcp_setup_unbalanced"] is True
+    assert signals["likely_pfcp_failure"] is True
+    assert any("get_pfcp_exchanges" in g for g in result.data["verdict_guardrails"])
 
 
 def test_pfcp_setup_balanced(enriched_handle):
@@ -120,6 +137,8 @@ def test_multiple_ran_ue_ngap_ids_retry_scenario(enriched_handle):
     assert "AUTHENTICATION_FAILURE" in overview[0]["events"]
     # Second UE: REG_REQUEST + REG_ACCEPT
     assert "REGISTRATION_ACCEPT" in overview[1]["events"]
+    assert signals["retry_pattern_present"] is True
+    assert any("retry" in g.lower() for g in result.data["verdict_guardrails"])
 
 
 def test_registration_reject_flag(enriched_handle):
@@ -146,6 +165,9 @@ def test_http_status_inventory(enriched_handle):
     signals = result.data["capture_signals"]
     assert signals["has_sbi_http_5xx"] is True
     assert signals["has_sbi_http_4xx"] is True
+    assert signals["has_sbi_http_failure"] is True
+    assert signals["likely_sbi_failure"] is True
+    assert any("get_sbi_calls" in g for g in result.data["verdict_guardrails"])
 
 
 def test_pdu_session_setup_signals(enriched_handle):

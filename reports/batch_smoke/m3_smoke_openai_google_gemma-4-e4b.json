@@ -1,0 +1,426 @@
+{
+  "timestamp": "2026-04-20T11:32:48.889606+00:00",
+  "model": "openai/google/gemma-4-e4b",
+  "api_base": "http://127.0.0.1:1234/v1",
+  "passed": 4,
+  "total": 9,
+  "total_tokens": 122479,
+  "total_cost_usd": null,
+  "total_wall_clock_s": 134.31,
+  "results": [
+    {
+      "task": "T1_registration_success",
+      "pcap": "01_registration_success.pcapng",
+      "description": "Clean registration: verdict must be success.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "The UE successfully completed the registration process, including authentication, security setup, and initial context establishment.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 296,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "Initiated the authentication process (NAS layer)."
+          },
+          {
+            "seq": 329,
+            "event": "SECURITY_MODE_COMMAND",
+            "note": "Successfully negotiated and commanded security mode setup (NAS layer)."
+          },
+          {
+            "seq": 467,
+            "event": "NGAP_INITIAL_CONTEXT_SETUP",
+            "note": "The initial context establishment message was successfully exchanged over NGAP."
+          }
+        ],
+        "confidence": 1.0
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 3,
+      "tool_calls_total": 2,
+      "elapsed_s": 13.89,
+      "total_tokens": 10277,
+      "total_cost_usd": null,
+      "wall_clock_s": 13.61
+    },
+    {
+      "task": "T2_registration_reject",
+      "pcap": "03_registration_reject.pcapng",
+      "description": "REGISTRATION_REJECT; evidence must include the reject frame.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "The UE failed to register with the core network because its identity could not be derived by the network.",
+        "failure_point": "REGISTRATION_REJECT at sequence 241",
+        "root_cause": "5GMM cause 9: UE identity cannot be derived by the network. This suggests an issue with the UE's credentials or the network's ability to process its identity.",
+        "evidence": [
+          {
+            "seq": 241,
+            "event": "REGISTRATION_REJECT",
+            "note": "The UE received a rejection during registration attempt."
+          },
+          {
+            "seq": 241,
+            "event": "REGISTRATION_REJECT",
+            "note": "Failure cause code is 9 (mm_cause: 9)."
+          },
+          {
+            "seq": 241,
+            "event": "REGISTRATION_REJECT",
+            "note": "Cause meaning lookup confirms 'UE identity cannot be derived by the network'."
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning"
+      ],
+      "rounds_used": 4,
+      "tool_calls_total": 3,
+      "elapsed_s": 14.09,
+      "total_tokens": 13860,
+      "total_cost_usd": null,
+      "wall_clock_s": 13.81
+    },
+    {
+      "task": "T3_authentication_failure",
+      "pcap": "04_authentication_failure.pcapng",
+      "description": "AUTHENTICATION_FAILURE (MAC). Root cause must mention MAC/authentication.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "The UE failed to complete its registration process because of an authentication failure caused by a MAC failure.",
+        "failure_point": "AUTHENTICATION_FAILURE at seq 257",
+        "root_cause": "5GMM cause 20 MAC_FAILURE: Authentication failed due to a security issue (MAC failure).",
+        "evidence": [
+          {
+            "seq": 256,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "The UE initiated the authentication process."
+          },
+          {
+            "seq": 257,
+            "event": "AUTHENTICATION_FAILURE",
+            "note": "Authentication failed with cause code 20 (MAC failure)."
+          },
+          {
+            "seq": 258,
+            "event": "AUTHENTICATION_RESULT",
+            "note": "A subsequent result was observed after the initial failure."
+          },
+          {
+            "seq": 259,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "The context release began following the authentication failure."
+          },
+          {
+            "seq": 261,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "Final context release observed for the UE."
+          }
+        ],
+        "confidence": 1.0
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning"
+      ],
+      "rounds_used": 4,
+      "tool_calls_total": 3,
+      "elapsed_s": 16.53,
+      "total_tokens": 13945,
+      "total_cost_usd": null,
+      "wall_clock_s": 16.27
+    },
+    {
+      "task": "T4_pfcp_failure",
+      "pcap": "07_pfcp_failure.pcapng",
+      "description": "UPF unreachable; diagnosis must reach PFCP/UPF.",
+      "ok": false,
+      "reason": "expected verdict in {failure, unclear}, got 'success'",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "The UE successfully completed its initial registration and security setup with the core network.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 256,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "Initiated authentication process."
+          },
+          {
+            "seq": 257,
+            "event": "AUTHENTICATION_RESPONSE",
+            "note": "Authentication successfully responded from the core network."
+          },
+          {
+            "seq": 288,
+            "event": "SECURITY_MODE_COMMAND",
+            "note": "Security context established successfully."
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 3,
+      "tool_calls_total": 2,
+      "elapsed_s": 12.16,
+      "total_tokens": 10793,
+      "total_cost_usd": null,
+      "wall_clock_s": 11.82
+    },
+    {
+      "task": "T5_sbi_failure",
+      "pcap": "08_sbi_failure.pcapng",
+      "description": "SBI failure (AUSF down); diagnosis must reach SBI / HTTP / AUSF.",
+      "ok": false,
+      "reason": "expected SBI / HTTP / AUSF / UDM cue in diagnosis; calls=['list_ue_sessions', 'get_ue_timeline', 'get_nas_cause_meaning', 'search_knowledge']",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "The UE repeatedly failed to register with the core network, receiving a REGISTRATION_REJECT message due to an unspecified 5GMM cause code 90.",
+        "failure_point": "REGISTRATION_REJECT at seq 1548 (and seq 700)",
+        "root_cause": "The UE failed registration multiple times with 5GMM cause 90, which is not defined in the knowledge base. This indicates a persistent failure during the initial access procedure.",
+        "evidence": [
+          {
+            "seq": 1117,
+            "event": "REGISTRATION_REQUEST",
+            "note": "The UE initiated an attempt to register with the core network."
+          },
+          {
+            "seq": 700,
+            "event": "REGISTRATION_REJECT",
+            "note": "First rejection received from the AMF due to mm_cause:90."
+          },
+          {
+            "seq": 1548,
+            "event": "REGISTRATION_REJECT",
+            "note": "Second rejection received from the AMF due to mm_cause:90, indicating a persistent failure."
+          }
+        ],
+        "confidence": 0.7
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning",
+        "search_knowledge"
+      ],
+      "rounds_used": 5,
+      "tool_calls_total": 4,
+      "elapsed_s": 19.99,
+      "total_tokens": 17645,
+      "total_cost_usd": null,
+      "wall_clock_s": 19.72
+    },
+    {
+      "task": "T6_registration_pdu_success",
+      "pcap": "02_registration_and_pdu_session_success.pcapng",
+      "description": "Registration + PDU session success: full flow.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "The User Equipment (UE) successfully completed registration, authentication, security setup, and established a PDU session with the 5G core network.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 237,
+            "event": "REGISTRATION_REQUEST",
+            "note": "Initial registration attempt was successful."
+          },
+          {
+            "seq": 314,
+            "event": "AUTHENTICATION_RESPONSE",
+            "note": "Authentication phase completed successfully."
+          },
+          {
+            "seq": 349,
+            "event": "SECURITY_MODE_COMMAND",
+            "note": "Security context established successfully."
+          },
+          {
+            "seq": 652,
+            "event": "NGAP_PDU_SESSION_RESOURCE_SETUP",
+            "note": "The PDU session was successfully set up and completed."
+          }
+        ],
+        "confidence": 1.0
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 3,
+      "tool_calls_total": 2,
+      "elapsed_s": 11.59,
+      "total_tokens": 10523,
+      "total_cost_usd": null,
+      "wall_clock_s": 11.28
+    },
+    {
+      "task": "T7_pdu_session_reject",
+      "pcap": "05_pdu_session_reject.pcapng",
+      "description": "PDU session establishment reject.",
+      "ok": false,
+      "reason": "expected verdict in {failure, unclear}, got 'success'",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "The UE successfully completed the registration and context setup process with no observed failures.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 232,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "Initiated authentication sequence."
+          },
+          {
+            "seq": 233,
+            "event": "AUTHENTICATION_RESPONSE",
+            "note": "Authentication successful response received."
+          },
+          {
+            "seq": 262,
+            "event": "SECURITY_MODE_COMMAND",
+            "note": "Security context established successfully."
+          },
+          {
+            "seq": 396,
+            "event": "NGAP_INITIAL_CONTEXT_SETUP",
+            "note": "Initial context setup message exchanged between gNB and AMF."
+          }
+        ],
+        "confidence": 1.0
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 3,
+      "tool_calls_total": 2,
+      "elapsed_s": 11.54,
+      "total_tokens": 13319,
+      "total_cost_usd": null,
+      "wall_clock_s": 11.21
+    },
+    {
+      "task": "T8_deregistration",
+      "pcap": "10_deregistration.pcapng",
+      "description": "Clean deregistration flow.",
+      "ok": false,
+      "reason": "expected deregistration evidence, got [{'seq': 294, 'event': 'AUTHENTICATION_RESPONSE', 'note': 'UE 1 successfully received the authentication response from the core network.'}, {'seq': 319, 'event': 'SECURITY_MODE_COMMAND', 'note': 'UE 1 successfully completed security mode command exchange.'}, {'seq': 453, 'event': 'NGAP_PDU_SESSION_RESOURCE_SETUP', 'note': 'UE 1 successfully established the PDU session resource (Session ID: 1).'}, {'seq': 1267, 'event': 'SECURITY_MODE_COMMAND', 'note': 'UE 2 successfully completed security mode command exchange.'}, {'seq': 1327, 'event': 'NGAP_PDU_SESSION_RESOURCE_SETUP', 'note': 'UE 2 successfully established the PDU session resource (Session ID: 1).'}]",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "Both UEs successfully completed their 5G registration and established PDU sessions before initiating context release.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 294,
+            "event": "AUTHENTICATION_RESPONSE",
+            "note": "UE 1 successfully received the authentication response from the core network."
+          },
+          {
+            "seq": 319,
+            "event": "SECURITY_MODE_COMMAND",
+            "note": "UE 1 successfully completed security mode command exchange."
+          },
+          {
+            "seq": 453,
+            "event": "NGAP_PDU_SESSION_RESOURCE_SETUP",
+            "note": "UE 1 successfully established the PDU session resource (Session ID: 1)."
+          },
+          {
+            "seq": 1267,
+            "event": "SECURITY_MODE_COMMAND",
+            "note": "UE 2 successfully completed security mode command exchange."
+          },
+          {
+            "seq": 1327,
+            "event": "NGAP_PDU_SESSION_RESOURCE_SETUP",
+            "note": "UE 2 successfully established the PDU session resource (Session ID: 1)."
+          }
+        ],
+        "confidence": 1.0
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 4,
+      "tool_calls_total": 3,
+      "elapsed_s": 20.0,
+      "total_tokens": 17547,
+      "total_cost_usd": null,
+      "wall_clock_s": 19.7
+    },
+    {
+      "task": "T9_registration_retry",
+      "pcap": "11_registration_retry.pcapng",
+      "description": "Registration with retry (eventual success).",
+      "ok": false,
+      "reason": "expected eventual success after retry, got 'failure'",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "The UE failed to complete its registration process because the authentication attempt resulted in a MAC failure.",
+        "failure_point": "AUTHENTICATION_FAILURE at sequence 374",
+        "root_cause": "5GMM cause 20 MAC_FAILURE: Authentication failed due to a security-related issue (MAC Failure).",
+        "evidence": [
+          {
+            "seq": 296,
+            "event": "REGISTRATION_REQUEST",
+            "note": "The UE initiated the registration process."
+          },
+          {
+            "seq": 374,
+            "event": "AUTHENTICATION_FAILURE",
+            "note": "Authentication failed with cause code 20 (MAC failure)."
+          },
+          {
+            "seq": 378,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "The UE context was released following the authentication failure."
+          }
+        ],
+        "confidence": 1.0
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning"
+      ],
+      "rounds_used": 4,
+      "tool_calls_total": 3,
+      "elapsed_s": 17.18,
+      "total_tokens": 14570,
+      "total_cost_usd": null,
+      "wall_clock_s": 16.89
+    }
+  ]
+}

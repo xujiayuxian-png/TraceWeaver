@@ -1,0 +1,280 @@
+{
+  "timestamp": "2026-04-20T11:30:14.034890+00:00",
+  "model": "openai/google/gemma-4-26b-a4b",
+  "api_base": "http://127.0.0.1:1234/v1",
+  "passed": 3,
+  "total": 9,
+  "total_tokens": 99647,
+  "total_cost_usd": null,
+  "total_wall_clock_s": 243.08,
+  "results": [
+    {
+      "task": "T1_registration_success",
+      "pcap": "01_registration_success.pcapng",
+      "description": "Clean registration: verdict must be success.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "The UE successfully completed the registration and security mode procedures, followed by NGAP context setup.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 296,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "UE authentication process initiated."
+          },
+          {
+            "seq": 297,
+            "event": "AUTHENTICATION_RESPONSE",
+            "note": "Authentication response received from UE."
+          },
+          {
+            "seq": 329,
+            "event": "SECURITY_MODE_COMMAND",
+            "note": "Security mode command sent to UE."
+          },
+          {
+            "seq": 467,
+            "event": "NGAP_INITIAL_CONTEXT_SETUP",
+            "note": "NGAP context setup successfully established for the UE."
+          }
+        ],
+        "confidence": 1.0
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 3,
+      "tool_calls_total": 2,
+      "elapsed_s": 33.07,
+      "total_tokens": 10095,
+      "total_cost_usd": null,
+      "wall_clock_s": 32.75
+    },
+    {
+      "task": "T2_registration_reject",
+      "pcap": "03_registration_reject.pcapng",
+      "description": "REGISTRATION_REJECT; evidence must include the reject frame.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "Multiple UEs failed registration because the network could not derive their identities.",
+        "failure_point": "REGISTRATION_REJECT at seq 241, 587, and 914",
+        "root_cause": "5GMM cause 9 (UE identity cannot be derived by the network)",
+        "evidence": [
+          {
+            "seq": 241,
+            "event": "REGISTRATION_REJECT",
+            "note": "UE (RAN ID: 1) rejected with mm_cause 9"
+          },
+          {
+            "seq": 587,
+            "event": "REGISTRATION_REJECT",
+            "note": "UE (RAN ID: 2) rejected with mm_cause 9"
+          },
+          {
+            "seq": 914,
+            "event": "REGISTRATION_REJECT",
+            "note": "UE (RAN ID: 3) rejected with mm_cause 9"
+          }
+        ],
+        "confidence": 1.0
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning",
+        "get_ue_timeline",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 6,
+      "tool_calls_total": 5,
+      "elapsed_s": 24.46,
+      "total_tokens": 21414,
+      "total_cost_usd": null,
+      "wall_clock_s": 24.17
+    },
+    {
+      "task": "T3_authentication_failure",
+      "pcap": "04_authentication_failure.pcapng",
+      "description": "AUTHENTICATION_FAILURE (MAC). Root cause must mention MAC/authentication.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "The UE registration failed due to a MAC failure during the authentication process.",
+        "failure_point": "AUTHENTICATION_FAILURE at seq 257",
+        "root_cause": "5GMM cause 20 MAC failure: The integrity protection of the authentication message failed, likely due to an incorrect key or synchronization issue.",
+        "evidence": [
+          {
+            "seq": 256,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "The AMF sent an authentication request to the UE."
+          },
+          {
+            "seq": 257,
+            "event": "AUTHENTICATION_FAILURE",
+            "note": "The UE responded with an authentication failure containing 5GMM cause 20 (MAC failure)."
+          }
+        ],
+        "confidence": 1.0
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning"
+      ],
+      "rounds_used": 4,
+      "tool_calls_total": 3,
+      "elapsed_s": 19.17,
+      "total_tokens": 12941,
+      "total_cost_usd": null,
+      "wall_clock_s": 18.89
+    },
+    {
+      "task": "T4_pfcp_failure",
+      "pcap": "07_pfcp_failure.pcapng",
+      "description": "UPF unreachable; diagnosis must reach PFCP/UPF.",
+      "ok": false,
+      "reason": "expected verdict in {failure, unclear}, got 'success'",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "The PDU session establishment procedure successfully retrieved subscription data from the UDM and UDR.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 1149,
+            "event": "PDU_SESSION_ESTABLISHMENT_REQUEST",
+            "note": "SMF initiated a PDU session establishment request to the AMF."
+          },
+          {
+            "seq": 1151,
+            "event": "Nudm-SDM_Get",
+            "note": "AMF requested subscription data from UDM for IMSI 001010000000210."
+          },
+          {
+            "seq": 1152,
+            "event": "Nudr-DR_Get",
+            "note": "UDM requested provisioned SM data from UDR."
+          },
+          {
+            "seq": 1159,
+            "event": "HTTP_200_OK",
+            "note": "UDR successfully returned the requested subscription data to the AMF."
+          }
+        ],
+        "confidence": 1.0
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_sbi_calls",
+        "list_ue_sessions",
+        "get_records_around",
+        "list_ue_sessions"
+      ],
+      "rounds_used": 7,
+      "tool_calls_total": 6,
+      "elapsed_s": 141.67,
+      "total_tokens": 34916,
+      "total_cost_usd": null,
+      "wall_clock_s": 141.3
+    },
+    {
+      "task": "T5_sbi_failure",
+      "pcap": "08_sbi_failure.pcapng",
+      "description": "SBI failure (AUSF down); diagnosis must reach SBI / HTTP / AUSF.",
+      "ok": false,
+      "reason": "did not reach final (stop_reason=intelligence_error)",
+      "stop_reason": "intelligence_error",
+      "final_json": null,
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning",
+        "search_knowledge",
+        "query_records",
+        "get_records_around"
+      ],
+      "rounds_used": 6,
+      "tool_calls_total": 6,
+      "elapsed_s": 26.2,
+      "total_tokens": 20281,
+      "total_cost_usd": null,
+      "wall_clock_s": 25.89
+    },
+    {
+      "task": "T6_registration_pdu_success",
+      "pcap": "02_registration_and_pdu_session_success.pcapng",
+      "description": "Registration + PDU session success: full flow.",
+      "ok": false,
+      "reason": "did not reach final (stop_reason=intelligence_error)",
+      "stop_reason": "intelligence_error",
+      "final_json": null,
+      "calls": [],
+      "rounds_used": 0,
+      "tool_calls_total": 0,
+      "elapsed_s": 0.5,
+      "total_tokens": null,
+      "total_cost_usd": null,
+      "wall_clock_s": 0.02
+    },
+    {
+      "task": "T7_pdu_session_reject",
+      "pcap": "05_pdu_session_reject.pcapng",
+      "description": "PDU session establishment reject.",
+      "ok": false,
+      "reason": "did not reach final (stop_reason=intelligence_error)",
+      "stop_reason": "intelligence_error",
+      "final_json": null,
+      "calls": [],
+      "rounds_used": 0,
+      "tool_calls_total": 0,
+      "elapsed_s": 0.35,
+      "total_tokens": null,
+      "total_cost_usd": null,
+      "wall_clock_s": 0.02
+    },
+    {
+      "task": "T8_deregistration",
+      "pcap": "10_deregistration.pcapng",
+      "description": "Clean deregistration flow.",
+      "ok": false,
+      "reason": "did not reach final (stop_reason=intelligence_error)",
+      "stop_reason": "intelligence_error",
+      "final_json": null,
+      "calls": [],
+      "rounds_used": 0,
+      "tool_calls_total": 0,
+      "elapsed_s": 0.31,
+      "total_tokens": null,
+      "total_cost_usd": null,
+      "wall_clock_s": 0.02
+    },
+    {
+      "task": "T9_registration_retry",
+      "pcap": "11_registration_retry.pcapng",
+      "description": "Registration with retry (eventual success).",
+      "ok": false,
+      "reason": "did not reach final (stop_reason=intelligence_error)",
+      "stop_reason": "intelligence_error",
+      "final_json": null,
+      "calls": [],
+      "rounds_used": 0,
+      "tool_calls_total": 0,
+      "elapsed_s": 0.32,
+      "total_tokens": null,
+      "total_cost_usd": null,
+      "wall_clock_s": 0.02
+    }
+  ]
+}

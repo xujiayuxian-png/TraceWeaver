@@ -1,0 +1,430 @@
+{
+  "timestamp": "2026-04-20T14:12:20.514166+00:00",
+  "model": "openai/qwen/qwen3-14b",
+  "api_base": "http://127.0.0.1:1234/v1",
+  "passed": 4,
+  "total": 9,
+  "total_tokens": 127335,
+  "total_cost_usd": null,
+  "total_wall_clock_s": 897.05,
+  "results": [
+    {
+      "task": "T1_registration_success",
+      "pcap": "01_registration_success.pcapng",
+      "description": "Clean registration: verdict must be success.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "The UE successfully completed registration and initial context setup with the AMF.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 141,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE initiated registration procedure"
+          },
+          {
+            "seq": 296,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "AMF requested authentication from UE"
+          },
+          {
+            "seq": 329,
+            "event": "SECURITY_MODE_COMMAND",
+            "note": "AMF configured security parameters"
+          },
+          {
+            "seq": 467,
+            "event": "NGAP_INITIAL_CONTEXT_SETUP",
+            "note": "AMF established initial context with UE"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 3,
+      "tool_calls_total": 2,
+      "elapsed_s": 102.82,
+      "total_tokens": 11430,
+      "total_cost_usd": null,
+      "wall_clock_s": 102.43
+    },
+    {
+      "task": "T2_registration_reject",
+      "pcap": "03_registration_reject.pcapng",
+      "description": "REGISTRATION_REJECT; evidence must include the reject frame.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE registration failed due to inability to derive UE identity (NAS 5GMM cause 9).",
+        "failure_point": "REGISTRATION_REJECT (seq 241)",
+        "root_cause": "5GMM cause 9: UE identity cannot be derived by the network",
+        "evidence": [
+          {
+            "seq": 158,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE initiated registration"
+          },
+          {
+            "seq": 241,
+            "event": "REGISTRATION_REJECT",
+            "note": "Rejected with 5GMM cause 9"
+          },
+          {
+            "seq": 242,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "AMF released UE context"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning"
+      ],
+      "rounds_used": 4,
+      "tool_calls_total": 3,
+      "elapsed_s": 103.43,
+      "total_tokens": 15242,
+      "total_cost_usd": null,
+      "wall_clock_s": 103.13
+    },
+    {
+      "task": "T3_authentication_failure",
+      "pcap": "04_authentication_failure.pcapng",
+      "description": "AUTHENTICATION_FAILURE (MAC). Root cause must mention MAC/authentication.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE authentication failed due to MAC failure (5GMM cause 20), leading to context release.",
+        "failure_point": "AUTHENTICATION_FAILURE (seq 257) with 5GMM cause 20",
+        "root_cause": "5GMM cause 20 MAC_FAILURE: Security authentication failed at the UE or network",
+        "evidence": [
+          {
+            "seq": 227,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE initiated registration"
+          },
+          {
+            "seq": 256,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "AMF requested authentication"
+          },
+          {
+            "seq": 257,
+            "event": "AUTHENTICATION_FAILURE",
+            "note": "UE responded with failure (cause 20)"
+          },
+          {
+            "seq": 259,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "AMF released UE context after failure"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning"
+      ],
+      "rounds_used": 4,
+      "tool_calls_total": 3,
+      "elapsed_s": 95.49,
+      "total_tokens": 15080,
+      "total_cost_usd": null,
+      "wall_clock_s": 95.22
+    },
+    {
+      "task": "T4_pfcp_failure",
+      "pcap": "07_pfcp_failure.pcapng",
+      "description": "UPF unreachable; diagnosis must reach PFCP/UPF.",
+      "ok": false,
+      "reason": "expected verdict in {failure, unclear}, got 'success'",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "The UE successfully completed registration and authentication with the AMF.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 212,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE initiated registration"
+          },
+          {
+            "seq": 256,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "AMF requested authentication"
+          },
+          {
+            "seq": 257,
+            "event": "AUTHENTICATION_RESPONSE",
+            "note": "UE provided authentication response"
+          },
+          {
+            "seq": 288,
+            "event": "SECURITY_MODE_COMMAND",
+            "note": "AMF sent security mode command"
+          }
+        ],
+        "confidence": 0.9
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 3,
+      "tool_calls_total": 2,
+      "elapsed_s": 123.26,
+      "total_tokens": 12584,
+      "total_cost_usd": null,
+      "wall_clock_s": 122.91
+    },
+    {
+      "task": "T5_sbi_failure",
+      "pcap": "08_sbi_failure.pcapng",
+      "description": "SBI failure (AUSF down); diagnosis must reach SBI / HTTP / AUSF.",
+      "ok": false,
+      "reason": "expected SBI / HTTP / AUSF / UDM cue in diagnosis; calls=['list_ue_sessions', 'get_ue_timeline', 'get_nas_cause_meaning', 'search_knowledge']",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE registration was rejected by the AMF with 5GMM cause 90, but the exact meaning of this code could not be resolved from available knowledge.",
+        "failure_point": "REGISTRATION_REJECT (seq 700 and 1548)",
+        "root_cause": "5GMM cause 90: Unrecognized or unsupported NAS container type (based on TS 24.501 Annex A, though not explicitly confirmed in this capture's knowledge base)",
+        "evidence": [
+          {
+            "seq": 700,
+            "event": "REGISTRATION_REJECT",
+            "note": "mm_cause=90"
+          },
+          {
+            "seq": 1548,
+            "event": "REGISTRATION_REJECT",
+            "note": "mm_cause=90"
+          }
+        ],
+        "confidence": 0.7
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning",
+        "search_knowledge"
+      ],
+      "rounds_used": 5,
+      "tool_calls_total": 4,
+      "elapsed_s": 107.33,
+      "total_tokens": 18632,
+      "total_cost_usd": null,
+      "wall_clock_s": 107.04
+    },
+    {
+      "task": "T6_registration_pdu_success",
+      "pcap": "02_registration_and_pdu_session_success.pcapng",
+      "description": "Registration + PDU session success: full flow.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "The UE successfully registered and established a PDU session with the AMF.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 237,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE initiated registration"
+          },
+          {
+            "seq": 313,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "AMF requested authentication"
+          },
+          {
+            "seq": 314,
+            "event": "AUTHENTICATION_RESPONSE",
+            "note": "UE provided authentication response"
+          },
+          {
+            "seq": 349,
+            "event": "SECURITY_MODE_COMMAND",
+            "note": "AMF sent security mode command"
+          },
+          {
+            "seq": 646,
+            "event": "NGAP_PDU_SESSION_RESOURCE_SETUP",
+            "note": "AMF initiated PDU session setup"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 3,
+      "tool_calls_total": 2,
+      "elapsed_s": 76.99,
+      "total_tokens": 11476,
+      "total_cost_usd": null,
+      "wall_clock_s": 76.67
+    },
+    {
+      "task": "T7_pdu_session_reject",
+      "pcap": "05_pdu_session_reject.pcapng",
+      "description": "PDU session establishment reject.",
+      "ok": false,
+      "reason": "expected verdict in {failure, unclear}, got 'success'",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "The UE successfully registered and established initial security with the AMF.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 204,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE initiated registration"
+          },
+          {
+            "seq": 232,
+            "event": "AUTHENTICATION_REQUEST",
+            "note": "AMF requested authentication"
+          },
+          {
+            "seq": 233,
+            "event": "AUTHENTICATION_RESPONSE",
+            "note": "UE provided authentication response"
+          },
+          {
+            "seq": 262,
+            "event": "SECURITY_MODE_COMMAND",
+            "note": "AMF sent security mode command"
+          },
+          {
+            "seq": 396,
+            "event": "NGAP_INITIAL_CONTEXT_SETUP",
+            "note": "AMF initiated initial context setup"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 3,
+      "tool_calls_total": 2,
+      "elapsed_s": 87.98,
+      "total_tokens": 14742,
+      "total_cost_usd": null,
+      "wall_clock_s": 87.65
+    },
+    {
+      "task": "T8_deregistration",
+      "pcap": "10_deregistration.pcapng",
+      "description": "Clean deregistration flow.",
+      "ok": false,
+      "reason": "expected deregistration evidence, got [{'seq': 254, 'event': 'REGISTRATION_REQUEST', 'note': 'Initiated registration procedure'}, {'seq': 389, 'event': 'NGAP_DOWNLINK_NAS_TRANSPORT', 'note': 'Received authentication request'}, {'seq': 449, 'event': 'NGAP_PDU_SESSION_RESOURCE_SETUP', 'note': 'Successfully established PDU session'}, {'seq': 1138, 'event': 'NGAP_UE_CONTEXT_RELEASE', 'note': 'Network-initiated UE context release'}]",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "UE with RAN-UE NGAP ID 1 successfully completed registration and PDU session setup before being released by the network.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 254,
+            "event": "REGISTRATION_REQUEST",
+            "note": "Initiated registration procedure"
+          },
+          {
+            "seq": 389,
+            "event": "NGAP_DOWNLINK_NAS_TRANSPORT",
+            "note": "Received authentication request"
+          },
+          {
+            "seq": 449,
+            "event": "NGAP_PDU_SESSION_RESOURCE_SETUP",
+            "note": "Successfully established PDU session"
+          },
+          {
+            "seq": 1138,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "Network-initiated UE context release"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 3,
+      "tool_calls_total": 2,
+      "elapsed_s": 107.66,
+      "total_tokens": 12635,
+      "total_cost_usd": null,
+      "wall_clock_s": 107.37
+    },
+    {
+      "task": "T9_registration_retry",
+      "pcap": "11_registration_retry.pcapng",
+      "description": "Registration with retry (eventual success).",
+      "ok": false,
+      "reason": "expected eventual success after retry, got 'failure'",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE registration failed due to NAS 5GMM cause 20 (MAC failure) during authentication, leading to NGAP UE context release.",
+        "failure_point": "AUTHENTICATION_FAILURE (seq 374) with mm_cause 20",
+        "root_cause": "5GMM cause 20 MAC_FAILURE: Security authentication failed at the UE due to invalid MAC calculation",
+        "evidence": [
+          {
+            "seq": 296,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE initiated registration"
+          },
+          {
+            "seq": 374,
+            "event": "AUTHENTICATION_FAILURE",
+            "note": "Failed with mm_cause 20 (MAC failure)"
+          },
+          {
+            "seq": 376,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "AMF released UE context after authentication failure"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "list_ue_sessions",
+        "get_ue_timeline",
+        "get_nas_cause_meaning"
+      ],
+      "rounds_used": 4,
+      "tool_calls_total": 3,
+      "elapsed_s": 94.97,
+      "total_tokens": 15514,
+      "total_cost_usd": null,
+      "wall_clock_s": 94.63
+    }
+  ]
+}

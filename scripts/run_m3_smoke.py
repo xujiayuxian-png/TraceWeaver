@@ -372,6 +372,10 @@ def run_task(
         "rounds_used": result.trace.rounds_used(),
         "tool_calls_total": result.trace.tool_calls_total(),
         "elapsed_s": round(time.perf_counter() - t0, 2),
+        # P1.1 telemetry
+        "total_tokens": result.total_tokens,
+        "total_cost_usd": result.total_cost_usd,
+        "wall_clock_s": round(result.wall_clock_s, 2) if result.wall_clock_s else None,
     }
     return ok, reason, info
 
@@ -439,7 +443,20 @@ def main() -> int:
         print(f"  pcap: {task.pcap}", flush=True)
         ok, reason, info = run_task(task, kernel, profile)
         status = "PASS" if ok else "FAIL"
-        print(f"  -> {status} ({info.get('elapsed_s', '?')}s)  {reason}", flush=True)
+        # P1.1: surface telemetry inline so operators can see real cost.
+        tokens = info.get("total_tokens")
+        cost = info.get("total_cost_usd")
+        tele = ""
+        if tokens is not None:
+            tele = f"  tokens={tokens}"
+            if cost is not None and cost > 0:
+                tele += f" cost=${cost:.4f}"
+        print(
+            f"  -> {status} ({info.get('elapsed_s', '?')}s) "
+            f"rounds={info.get('rounds_used')} tools={info.get('tool_calls_total')}"
+            f"{tele}  {reason}",
+            flush=True,
+        )
         if not ok:
             print(f"     final_json={info.get('final_json')!r}", flush=True)
             print(f"     calls={info.get('calls')}", flush=True)
@@ -456,15 +473,28 @@ def main() -> int:
         if ok:
             passed += 1
 
+    # P1.1: aggregate telemetry across all tasks
+    agg_tokens = sum(r.get("total_tokens") or 0 for r in results)
+    agg_cost = sum(r.get("total_cost_usd") or 0.0 for r in results)
+    agg_wall = sum(r.get("wall_clock_s") or 0.0 for r in results)
     summary = {
         "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
         "model": args.model,
         "api_base": args.api_base,
         "passed": passed,
         "total": len(tasks),
+        "total_tokens": agg_tokens or None,
+        "total_cost_usd": round(agg_cost, 4) if agg_cost else None,
+        "total_wall_clock_s": round(agg_wall, 2),
         "results": results,
     }
     print(f"\n[M3-smoke] {passed}/{len(tasks)} tasks passed")
+    if agg_tokens:
+        cost_str = f" cost=${agg_cost:.4f}" if agg_cost > 0 else ""
+        print(
+            f"[M3-smoke] telemetry: tokens={agg_tokens}{cost_str} "
+            f"wall_clock={agg_wall:.1f}s"
+        )
 
     if args.report is not None:
         args.report.write_text(

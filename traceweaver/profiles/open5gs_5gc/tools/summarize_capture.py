@@ -53,6 +53,15 @@ _PDU_REJECT_EVENTS = {"PDU_SESSION_ESTABLISHMENT_REJECT"}
 # PFCP message names (see PFCP_MSG_MAP in fields.py) that represent session setup.
 _PFCP_SETUP_REQUEST_NAMES = {"SESSION_ESTABLISHMENT_REQUEST"}
 _PFCP_SETUP_RESPONSE_NAMES = {"SESSION_ESTABLISHMENT_RESPONSE"}
+_REGISTRATION_SUCCESS_HINT_EVENTS = {
+    "REGISTRATION_ACCEPT",
+    "REGISTRATION_COMPLETE",
+    "AUTHENTICATION_RESPONSE",
+    "SECURITY_MODE_COMMAND",
+    "SECURITY_MODE_COMPLETE",
+    "NGAP_INITIAL_CONTEXT_SETUP",
+    "NGAP_DOWNLINK_NAS_TRANSPORT",
+}
 _PFCP_DELETE_REQUEST_NAMES = {"SESSION_DELETION_REQUEST"}
 _PFCP_DELETE_RESPONSE_NAMES = {"SESSION_DELETION_RESPONSE"}
 
@@ -92,6 +101,7 @@ class SummarizeCaptureTool(Tool):
         protocol_counts: Counter[str] = Counter()
         pfcp_name_counts: Counter[str] = Counter()
         http_status_counts: Counter[str] = Counter()
+        sbi_calls: dict[tuple[str, str], dict[str, Any]] = {}
         # Per-UE view keyed by ran_ue_ngap_id
         ue_events: dict[str, list[str]] = {}
         ue_first_seq: dict[str, int] = {}
@@ -122,6 +132,27 @@ class SummarizeCaptureTool(Tool):
             status = f.get("http2.headers.status")
             if status:
                 http_status_counts[str(status)] += 1
+
+            stream_id = f.get("http2.streamid")
+            if stream_id:
+                tcp_stream = f.get("tcp.stream") or ""
+                sbi_key = (str(tcp_stream), str(stream_id))
+                slot = sbi_calls.setdefault(
+                    sbi_key,
+                    {
+                        "method": None,
+                        "path": None,
+                        "status": None,
+                    },
+                )
+                method = f.get("http2.headers.method")
+                path = f.get("http2.headers.path")
+                if method and not slot["method"]:
+                    slot["method"] = str(method)
+                if path and not slot["path"]:
+                    slot["path"] = str(path)
+                if status and slot["status"] is None:
+                    slot["status"] = str(status)
 
             ran = f.get("ran_ue_ngap_id")
             if ran is not None and ev:
@@ -156,9 +187,19 @@ class SummarizeCaptureTool(Tool):
 
         pfcp_setup_reqs = sum(pfcp_name_counts[n] for n in _PFCP_SETUP_REQUEST_NAMES)
         pfcp_setup_resps = sum(pfcp_name_counts[n] for n in _PFCP_SETUP_RESPONSE_NAMES)
+        pfcp_delete_reqs = sum(pfcp_name_counts[n] for n in _PFCP_DELETE_REQUEST_NAMES)
+        pfcp_delete_resps = sum(pfcp_name_counts[n] for n in _PFCP_DELETE_RESPONSE_NAMES)
 
         has_http_5xx = any(s.startswith("5") for s in http_status_counts)
         has_http_4xx = any(s.startswith("4") for s in http_status_counts)
+
+        sbi_missing_response_count = 0
+        nausf_auth_missing_response_count = 0
+        for call in sbi_calls.values():
+            if call.get("method") and not call.get("status"):
+                sbi_missing_response_count += 1
+                if "/nausf-auth/" in (call.get("path") or ""):
+                    nausf_auth_missing_response_count += 1
 
         pdu_setup_started = any(n in ev_set for n in _PDU_SETUP_REQUEST_EVENTS)
         pdu_setup_completed = any(n in ev_set for n in _PDU_SETUP_COMPLETE_EVENTS)
@@ -167,6 +208,12 @@ class SummarizeCaptureTool(Tool):
         has_deactivation = bool(ev_set & _DEACTIVATION_EVENTS)
         has_deregistration = bool(ev_set & _DEREGISTRATION_EVENTS)
         has_ue_context_release = bool(ev_set & _UE_RELEASE_EVENTS)
+        has_failure_symptom = bool(
+            (ev_set & _REGISTRATION_REJECT_EVENTS)
+            or (ev_set & _AUTH_FAILURE_EVENTS)
+            or (ev_set & _SERVICE_REJECT_EVENTS)
+            or pdu_rejected
+        )
 
         retry_pattern_present = False
         if len(ue_overview) > 1:
@@ -179,11 +226,22 @@ class SummarizeCaptureTool(Tool):
                     saw_early_failure = True
                 if idx > 0 and "REGISTRATION_REQUEST" in events:
                     saw_later_fresh_start = True
-                if idx > 0 and (events & {"REGISTRATION_ACCEPT", "REGISTRATION_COMPLETE"}):
+                if idx > 0 and (events & _REGISTRATION_SUCCESS_HINT_EVENTS):
                     saw_later_success = True
             retry_pattern_present = (
                 saw_early_failure and saw_later_fresh_start and saw_later_success
             )
+
+        likely_deregistration_flow = (
+            has_deregistration
+            or has_deactivation
+            or (
+                pdu_setup_completed
+                and has_ue_context_release
+                and pfcp_delete_reqs > 0
+                and pfcp_delete_reqs == pfcp_delete_resps
+            )
+        )
 
         signals = {
             "has_registration": bool(ev_set & _REGISTRATION_EVENTS),
@@ -200,9 +258,13 @@ class SummarizeCaptureTool(Tool):
             "pdu_session_rejected": pdu_rejected,
             "pfcp_setup_request_count": pfcp_setup_reqs,
             "pfcp_setup_response_count": pfcp_setup_resps,
+            "pfcp_delete_request_count": pfcp_delete_reqs,
+            "pfcp_delete_response_count": pfcp_delete_resps,
             "pfcp_setup_unbalanced": (
                 pfcp_setup_reqs > 0 and pfcp_setup_reqs != pfcp_setup_resps
             ),
+            "sbi_missing_response_count": sbi_missing_response_count,
+            "nausf_auth_missing_response_count": nausf_auth_missing_response_count,
             "has_sbi_http_failure": has_http_5xx or has_http_4xx,
             "has_sbi_http_5xx": has_http_5xx,
             "has_sbi_http_4xx": has_http_4xx,
@@ -210,10 +272,22 @@ class SummarizeCaptureTool(Tool):
             "ran_ue_ngap_id_count": len(ue_overview),
             "multiple_ran_ue_ngap_ids": len(ue_overview) > 1,
             "retry_pattern_present": retry_pattern_present,
+            "likely_deregistration_flow": likely_deregistration_flow,
+            "likely_retry_then_success": retry_pattern_present,
             "likely_pfcp_failure": (
                 pfcp_setup_reqs > 0 and pfcp_setup_reqs != pfcp_setup_resps
             ),
-            "likely_sbi_failure": has_http_5xx or has_http_4xx,
+            "likely_sbi_failure": (
+                has_http_5xx
+                or has_http_4xx
+                or (
+                    has_failure_symptom
+                    and (
+                        sbi_missing_response_count > 0
+                        or nausf_auth_missing_response_count > 0
+                    )
+                )
+            ),
         }
 
         verdict_guardrails: list[str] = []
@@ -224,18 +298,57 @@ class SummarizeCaptureTool(Tool):
             )
         if signals["likely_sbi_failure"]:
             verdict_guardrails.append(
-                "SBI HTTP failures are present; inspect get_sbi_calls before "
-                "finalizing any success verdict."
+                "SBI failure signals are present (HTTP failure or request without response); "
+                "inspect get_sbi_calls before finalizing any success verdict."
             )
-        if signals["has_deregistration_or_deactivation"]:
+        if signals["likely_deregistration_flow"]:
             verdict_guardrails.append(
-                "Capture contains deregistration/deactivation activity; a "
-                "pure registration-success summary is incomplete."
+                "Capture indicates deregistration or session teardown after success; "
+                "a pure registration-success summary is incomplete. Prefer citing "
+                "event='DEREGISTRATION_OR_SESSION_TEARDOWN' in evidence if no more explicit "
+                "DEREGISTRATION_* or DEACTIVATION_* event is available."
             )
         if signals["retry_pattern_present"]:
             verdict_guardrails.append(
                 "Multiple RAN_UE_NGAP_IDs plus early failure and later success "
                 "suggest a retry; do not stop at the first failed attempt."
+            )
+
+        capture_findings: list[dict[str, Any]] = []
+        if signals["likely_pfcp_failure"]:
+            capture_findings.append(
+                {
+                    "event": "PFCP_FAILURE_HINT",
+                    "note": "PFCP session establishment requests are not matched by responses.",
+                }
+            )
+        if signals["likely_sbi_failure"] and nausf_auth_missing_response_count > 0:
+            capture_findings.append(
+                {
+                    "event": "SBI_AUSF_CALL_WITHOUT_RESPONSE",
+                    "note": "Observed Nausf authentication request without a matching HTTP response.",
+                }
+            )
+        elif signals["likely_sbi_failure"] and sbi_missing_response_count > 0:
+            capture_findings.append(
+                {
+                    "event": "SBI_CALL_WITHOUT_RESPONSE",
+                    "note": "Observed SBI request(s) without matching HTTP response headers.",
+                }
+            )
+        if likely_deregistration_flow:
+            capture_findings.append(
+                {
+                    "event": "DEREGISTRATION_OR_SESSION_TEARDOWN",
+                    "note": "Observed teardown pattern: prior success followed by PFCP deletion and/or UE context release.",
+                }
+            )
+        if retry_pattern_present:
+            capture_findings.append(
+                {
+                    "event": "RETRY_THEN_SUCCESS",
+                    "note": "An earlier UE attempt failed, and a later fresh RAN_UE_NGAP_ID progressed successfully.",
+                }
             )
 
         data: dict[str, Any] = {
@@ -248,13 +361,14 @@ class SummarizeCaptureTool(Tool):
             "ue_overview": ue_overview,
             "capture_signals": signals,
             "verdict_guardrails": verdict_guardrails,
+            "capture_findings": capture_findings,
             "_interpretation_hint": (
                 "Reconcile your verdict with capture_signals before "
                 "finalizing. Examples of contradictions you MUST "
                 "investigate: (a) verdict=success but has_deregistration_or_deactivation "
                 "is true; "
                 "(b) verdict=success but pfcp_setup_unbalanced is true; "
-                "(c) verdict=success but has_sbi_http_failure is true; "
+                "(c) verdict=success but likely_sbi_failure is true; "
                 "(d) two verdicts for two ran_ue_ngap_ids when they may "
                 "actually be the same UE retrying — check if one ends in "
                 "failure and the other starts fresh with REGISTRATION_REQUEST."

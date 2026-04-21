@@ -1,0 +1,54 @@
+{
+  "timestamp": "2026-04-20T23:03:10.673248+00:00",
+  "model": "openai/qwen/qwen3-14b",
+  "api_base": "http://127.0.0.1:1234/v1",
+  "passed": 0,
+  "total": 1,
+  "total_tokens": 21998,
+  "total_cost_usd": null,
+  "total_wall_clock_s": 144.83,
+  "results": [
+    {
+      "task": "T8_deregistration",
+      "pcap": "10_deregistration.pcapng",
+      "description": "Clean deregistration flow.",
+      "ok": false,
+      "reason": "expected deregistration evidence, got [{'seq': 1138, 'event': 'NGAP_UE_CONTEXT_RELEASE', 'note': 'Observed UE context release after successful PDU session setup (seq 449/453)'}, {'seq': 1140, 'event': 'NGAP_UE_CONTEXT_RELEASE', 'note': 'Confirming dual-direction context release completion'}, {'seq': 453, 'event': 'NGAP_PDU_SESSION_RESOURCE_SETUP', 'note': 'PDU session successfully established before teardown'}]",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "UE registered successfully and established a PDU session before undergoing session teardown via NGAP UE Context Release.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 1138,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "Observed UE context release after successful PDU session setup (seq 449/453)"
+          },
+          {
+            "seq": 1140,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "Confirming dual-direction context release completion"
+          },
+          {
+            "seq": 453,
+            "event": "NGAP_PDU_SESSION_RESOURCE_SETUP",
+            "note": "PDU session successfully established before teardown"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 4,
+      "tool_calls_total": 2,
+      "elapsed_s": 145.16,
+      "total_tokens": 21998,
+      "total_cost_usd": null,
+      "wall_clock_s": 144.83
+    }
+  ]
+}

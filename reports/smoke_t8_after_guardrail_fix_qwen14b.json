@@ -1,0 +1,54 @@
+{
+  "timestamp": "2026-04-20T23:00:00.823322+00:00",
+  "model": "openai/qwen/qwen3-14b",
+  "api_base": "http://127.0.0.1:1234/v1",
+  "passed": 0,
+  "total": 1,
+  "total_tokens": 14220,
+  "total_cost_usd": null,
+  "total_wall_clock_s": 121.7,
+  "results": [
+    {
+      "task": "T8_deregistration",
+      "pcap": "10_deregistration.pcapng",
+      "description": "Clean deregistration flow.",
+      "ok": false,
+      "reason": "expected verdict=success for clean deregistration, got 'failure'",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE registered successfully but was later de-registered with PFCP session deletion.",
+        "failure_point": "NGAP_UE_CONTEXT_RELEASE (seq 1140) and PFCP SESSION_DELETION_REQUEST (seq 1138)",
+        "root_cause": "DEREGISTRATION_OR_SESSION_TEARDOWN: Session teardown observed after successful registration",
+        "evidence": [
+          {
+            "seq": 1140,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "Final UE context release event for ran_ue_ngap_id=1"
+          },
+          {
+            "seq": 1138,
+            "event": "SESSION_DELETION_REQUEST",
+            "note": "PFCP session deletion initiated by SMF/UPF"
+          },
+          {
+            "seq": 254,
+            "event": "REGISTRATION_REQUEST",
+            "note": "Initial registration attempt succeeded"
+          }
+        ],
+        "confidence": 0.9
+      },
+      "calls": [
+        "summarize_capture",
+        "list_ue_sessions"
+      ],
+      "rounds_used": 3,
+      "tool_calls_total": 2,
+      "elapsed_s": 122.02,
+      "total_tokens": 14220,
+      "total_cost_usd": null,
+      "wall_clock_s": 121.7
+    }
+  ]
+}

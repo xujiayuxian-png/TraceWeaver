@@ -82,7 +82,7 @@ def test_has_deactivation_flag(enriched_handle):
     assert signals["has_deactivation"] is True
     assert signals["has_deregistration_or_deactivation"] is True
     assert any(
-        "deregistration/deactivation" in g
+        "deregistration" in g.lower() or "teardown" in g.lower()
         for g in result.data["verdict_guardrails"]
     )
 
@@ -170,6 +170,21 @@ def test_http_status_inventory(enriched_handle):
     assert any("get_sbi_calls" in g for g in result.data["verdict_guardrails"])
 
 
+def test_sbi_request_without_response_is_flagged(enriched_handle):
+    handle = enriched_handle([
+        make_record(seq=1, http2_method="POST", http2_path="/nausf-auth/v1/ue-authentications", http2_streamid="1", tcp_stream="1"),
+        make_record(seq=2, http2_method="GET", http2_path="/nnrf-disc/v1/nf-instances?target-nf-type=UDM", http2_status="200", http2_streamid="3", tcp_stream="2"),
+        make_record(seq=3, ran="1", mm_type=68, mm_cause=90),
+    ])
+    result = _run(handle)
+    signals = result.data["capture_signals"]
+    assert signals["sbi_missing_response_count"] == 1
+    assert signals["nausf_auth_missing_response_count"] == 1
+    assert signals["likely_sbi_failure"] is True
+    findings = result.data["capture_findings"]
+    assert any(f["event"] == "SBI_AUSF_CALL_WITHOUT_RESPONSE" for f in findings)
+
+
 def test_pdu_session_setup_signals(enriched_handle):
     """If setup started but not completed, the flag must flip."""
     handle = enriched_handle([
@@ -180,6 +195,27 @@ def test_pdu_session_setup_signals(enriched_handle):
     signals = result.data["capture_signals"]
     assert signals["pdu_session_setup_started"] is True
     assert signals["pdu_session_setup_completed"] is False
+
+
+def test_teardown_pattern_infers_deregistration_flow(enriched_handle):
+    handle = enriched_handle([
+        make_record(seq=1, ran="1", mm_type=65),
+        make_record(seq=2, ran="1", mm_type=87),
+        make_record(seq=3, ran="1", proc=29),
+        make_record(seq=4, ran="1", proc=41),
+        make_record(seq=5, pfcp_msg_type=54),
+        make_record(seq=6, pfcp_msg_type=55),
+    ])
+    result = _run(handle)
+    signals = result.data["capture_signals"]
+    assert signals["has_ue_context_release"] is True
+    assert signals["pfcp_delete_request_count"] == 1
+    assert signals["pfcp_delete_response_count"] == 1
+    assert signals["likely_deregistration_flow"] is True
+    assert any(
+        f["event"] == "DEREGISTRATION_OR_SESSION_TEARDOWN"
+        for f in result.data["capture_findings"]
+    )
 
 
 def test_time_span(enriched_handle):

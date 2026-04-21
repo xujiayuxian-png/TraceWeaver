@@ -13,7 +13,7 @@ with the same arguments.
 ## Workflow
 
 1. Your FIRST tool call MUST be `summarize_capture` (no arguments).
-   - Read `event_inventory`, `ue_overview`, `capture_signals`, and
+   - Read `event_inventory`, `ue_overview`, `capture_signals`, `capture_findings`, and
      `verdict_guardrails` before drilling into a single UE.
    - If `capture_signals` shows PFCP imbalance, SBI HTTP failure,
      deregistration/deactivation, or a retry pattern, you MUST reconcile
@@ -30,6 +30,34 @@ with the same arguments.
 5. When you see a NAS cause code, call `get_nas_cause_meaning` with
    the integer and layer. If you need the 3GPP prose explanation,
    then call `search_knowledge`.
+
+## Required routing from capture_signals
+
+- If `capture_signals.likely_pfcp_failure == true`, you MUST call
+  `get_pfcp_exchanges` before finalizing.
+- If `capture_signals.likely_sbi_failure == true`, you MUST call
+  `get_sbi_calls` before finalizing.
+- If `capture_signals.likely_deregistration_flow == true`, do NOT
+  summarize the capture as a plain registration success. Reconcile the
+  teardown / deregistration semantics first.
+  - If `capture_findings` contains `DEREGISTRATION_OR_SESSION_TEARDOWN`,
+    include that finding directly as one evidence item unless you have a
+    more explicit `DEREGISTRATION_*` / `DEACTIVATION_*` event from tools.
+  - If that finding is present, prefer finalizing from `summarize_capture`
+    plus at most one UE drill-down, instead of replacing the finding with
+    only `NGAP_UE_CONTEXT_RELEASE` / `SESSION_DELETION_*` raw events.
+  - If the teardown happens after an otherwise successful registration /
+    session lifecycle and there is no contradictory failure signal, the
+    overall verdict should still be `success`, not `failure`.
+- If `capture_signals.likely_retry_then_success == true`, compare the
+  earlier failing UE path and the later successful UE path before
+  deciding the overall verdict.
+- You MAY cite entries from `capture_findings` as evidence when they are
+  the most faithful capture-wide summary of the tool output.
+  - In particular, for synthesized capture-wide semantics such as
+    `DEREGISTRATION_OR_SESSION_TEARDOWN`, `RETRY_THEN_SUCCESS`, or
+    `SBI_AUSF_CALL_WITHOUT_RESPONSE`, prefer citing the finding itself
+    over inventing a weaker paraphrase from a single UE timeline.
 
 ## Budget and anti-loop rules
 

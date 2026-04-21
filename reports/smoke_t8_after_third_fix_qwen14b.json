@@ -1,0 +1,54 @@
+{
+  "timestamp": "2026-04-20T22:56:52.895420+00:00",
+  "model": "openai/qwen/qwen3-14b",
+  "api_base": "http://127.0.0.1:1234/v1",
+  "passed": 0,
+  "total": 1,
+  "total_tokens": 15024,
+  "total_cost_usd": null,
+  "total_wall_clock_s": 104.7,
+  "results": [
+    {
+      "task": "T8_deregistration",
+      "pcap": "10_deregistration.pcapng",
+      "description": "Clean deregistration flow.",
+      "ok": false,
+      "reason": "expected deregistration evidence, got [{'seq': 1138, 'event': 'NGAP_UE_CONTEXT_RELEASE', 'note': 'Final event in UE timeline showing network-initiated context release'}, {'seq': 453, 'event': 'NGAP_PDU_SESSION_RESOURCE_SETUP', 'note': 'Successful PDU session setup confirmed with matching request/accept'}, {'seq': 1121, 'event': 'NGAP_DOWNLINK_NAS_TRANSPORT', 'note': 'Last NAS message before context release indicates active session'}]",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "UE successfully registered and established a PDU session before network-initiated teardown.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 1138,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "Final event in UE timeline showing network-initiated context release"
+          },
+          {
+            "seq": 453,
+            "event": "NGAP_PDU_SESSION_RESOURCE_SETUP",
+            "note": "Successful PDU session setup confirmed with matching request/accept"
+          },
+          {
+            "seq": 1121,
+            "event": "NGAP_DOWNLINK_NAS_TRANSPORT",
+            "note": "Last NAS message before context release indicates active session"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 3,
+      "tool_calls_total": 2,
+      "elapsed_s": 105.03,
+      "total_tokens": 15024,
+      "total_cost_usd": null,
+      "wall_clock_s": 104.7
+    }
+  ]
+}

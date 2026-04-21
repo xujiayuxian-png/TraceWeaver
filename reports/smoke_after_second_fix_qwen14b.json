@@ -1,0 +1,141 @@
+{
+  "timestamp": "2026-04-20T22:54:31.194896+00:00",
+  "model": "openai/qwen/qwen3-14b",
+  "api_base": "http://127.0.0.1:1234/v1",
+  "passed": 2,
+  "total": 3,
+  "total_tokens": 58097,
+  "total_cost_usd": null,
+  "total_wall_clock_s": 469.15,
+  "results": [
+    {
+      "task": "T5_sbi_failure",
+      "pcap": "08_sbi_failure.pcapng",
+      "description": "SBI failure (AUSF down); diagnosis must reach SBI / HTTP / AUSF.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE registration failed due to authentication service unavailability in the 5G core network.",
+        "failure_point": "REGISTRATION_REJECT (seq 700 and 1548) with 5GMM cause 90: Network failure",
+        "root_cause": "5GMM cause 90: Network failure - AUSF authentication service did not respond to Nausf requests",
+        "evidence": [
+          {
+            "seq": 700,
+            "event": "REGISTRATION_REJECT",
+            "note": "First registration rejection with mm_cause 90"
+          },
+          {
+            "seq": 1548,
+            "event": "REGISTRATION_REJECT",
+            "note": "Second registration rejection with mm_cause 90"
+          },
+          {
+            "seq": 254,
+            "event": "SBI_AUSF_CALL_WITHOUT_RESPONSE",
+            "note": "Nausf authentication request missing HTTP response"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "get_sbi_calls",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 4,
+      "tool_calls_total": 3,
+      "elapsed_s": 104.03,
+      "total_tokens": 17585,
+      "total_cost_usd": null,
+      "wall_clock_s": 103.71
+    },
+    {
+      "task": "T8_deregistration",
+      "pcap": "10_deregistration.pcapng",
+      "description": "Clean deregistration flow.",
+      "ok": false,
+      "reason": "expected deregistration evidence, got [{'seq': 254, 'event': 'REGISTRATION_REQUEST', 'note': 'Initiated registration process'}, {'seq': 1138, 'event': 'NGAP_UE_CONTEXT_RELEASE', 'note': 'Final context release after successful session setup'}, {'seq': 453, 'event': 'NGAP_PDU_SESSION_RESOURCE_SETUP', 'note': 'PDU session successfully established'}]",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "UE successfully registered, established a PDU session, and later released the UE context.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 254,
+            "event": "REGISTRATION_REQUEST",
+            "note": "Initiated registration process"
+          },
+          {
+            "seq": 1138,
+            "event": "NGAP_UE_CONTEXT_RELEASE",
+            "note": "Final context release after successful session setup"
+          },
+          {
+            "seq": 453,
+            "event": "NGAP_PDU_SESSION_RESOURCE_SETUP",
+            "note": "PDU session successfully established"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "list_ue_sessions",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 4,
+      "tool_calls_total": 3,
+      "elapsed_s": 230.94,
+      "total_tokens": 21527,
+      "total_cost_usd": null,
+      "wall_clock_s": 230.6
+    },
+    {
+      "task": "T9_registration_retry",
+      "pcap": "11_registration_retry.pcapng",
+      "description": "Registration with retry (eventual success).",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "The UE initially failed due to a MAC security failure but successfully re-registered after retrying.",
+        "failure_point": "AUTHENTICATION_FAILURE (seq 374) with 5GMM cause 20: MAC failure",
+        "root_cause": "5GMM cause 20: MAC failure (security category)",
+        "evidence": [
+          {
+            "seq": 374,
+            "event": "AUTHENTICATION_FAILURE",
+            "note": "5GMM cause code 20 indicates a MAC failure during authentication"
+          },
+          {
+            "seq": 1415,
+            "event": "REGISTRATION_REQUEST",
+            "note": "Fresh registration attempt with ran_ue_ngap_id=2 after initial failure"
+          },
+          {
+            "seq": 1634,
+            "event": "NGAP_INITIAL_CONTEXT_SETUP",
+            "note": "Successful context setup in the second UE session indicating retry success"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "get_ue_timeline",
+        "get_nas_cause_meaning"
+      ],
+      "rounds_used": 4,
+      "tool_calls_total": 3,
+      "elapsed_s": 135.22,
+      "total_tokens": 18985,
+      "total_cost_usd": null,
+      "wall_clock_s": 134.84
+    }
+  ]
+}

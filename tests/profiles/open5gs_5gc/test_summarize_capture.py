@@ -197,6 +197,26 @@ def test_pdu_session_setup_signals(enriched_handle):
     assert signals["pdu_session_setup_completed"] is False
 
 
+def test_pdu_session_failure_hint_from_retries_and_nsmf_4xx(enriched_handle):
+    handle = enriched_handle([
+        make_record(seq=1, ran="1", sm_type=193),
+        make_record(seq=2, ran="1", sm_type=193),
+        make_record(seq=3, http2_method="POST", http2_path="/nsmf-pdusession/v1/sm-contexts", http2_status="400", http2_streamid="1", tcp_stream="1"),
+        make_record(seq=4, http2_method="GET", http2_path="/nudm-sdm/v2/imsi-1/sm-data?dnn=bad", http2_status="400", http2_streamid="3", tcp_stream="2"),
+    ])
+    result = _run(handle)
+    signals = result.data["capture_signals"]
+    assert signals["pdu_session_setup_started"] is True
+    assert signals["pdu_session_setup_completed"] is False
+    assert signals["nsmf_pdu_http_4xx_count"] == 1
+    assert signals["nudm_sm_data_http_4xx_count"] == 1
+    assert signals["likely_pdu_session_failure"] is True
+    assert any(
+        f["event"] == "PDU_SESSION_ESTABLISHMENT_REJECT_HINT"
+        for f in result.data["capture_findings"]
+    )
+
+
 def test_teardown_pattern_infers_deregistration_flow(enriched_handle):
     handle = enriched_handle([
         make_record(seq=1, ran="1", mm_type=65),

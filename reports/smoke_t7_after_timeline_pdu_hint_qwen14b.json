@@ -1,0 +1,55 @@
+{
+  "timestamp": "2026-04-21T01:35:05.583907+00:00",
+  "model": "openai/qwen/qwen3-14b",
+  "api_base": "http://127.0.0.1:1234/v1",
+  "passed": 1,
+  "total": 1,
+  "total_tokens": 30970,
+  "total_cost_usd": null,
+  "total_wall_clock_s": 252.11,
+  "results": [
+    {
+      "task": "T7_pdu_session_reject",
+      "pcap": "05_pdu_session_reject.pcapng",
+      "description": "PDU session establishment reject.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE registered successfully but failed to establish a PDU session due to repeated Nsmf/Nudm SBI HTTP 400 errors.",
+        "failure_point": "PDU_SESSION_ESTABLISHMENT_REJECT_HINT at seq 2115",
+        "root_cause": "Nsmf/PDUSession SM context creation failed with HTTP 400 (Bad Request) in all 31 attempts, likely due to invalid parameters or missing data from Nudm.",
+        "evidence": [
+          {
+            "seq": 454,
+            "event": "POST /nsmf-pdusession/v1/sm-contexts",
+            "note": "HTTP 400 response from SMF to Nudm"
+          },
+          {
+            "seq": 2115,
+            "event": "PDU_SESSION_ESTABLISHMENT_REJECT_HINT",
+            "note": "No PDU session completed despite 31 attempts"
+          },
+          {
+            "seq": 204,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE registration initiated successfully"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "get_sbi_calls",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 4,
+      "tool_calls_total": 3,
+      "elapsed_s": 252.53,
+      "total_tokens": 30970,
+      "total_cost_usd": null,
+      "wall_clock_s": 252.11
+    }
+  ]
+}

@@ -195,11 +195,19 @@ class SummarizeCaptureTool(Tool):
 
         sbi_missing_response_count = 0
         nausf_auth_missing_response_count = 0
+        nsmf_pdu_http_4xx_count = 0
+        nudm_sm_data_http_4xx_count = 0
         for call in sbi_calls.values():
+            path = str(call.get("path") or "")
+            status_text = str(call.get("status") or "")
             if call.get("method") and not call.get("status"):
                 sbi_missing_response_count += 1
-                if "/nausf-auth/" in (call.get("path") or ""):
+                if "/nausf-auth/" in path:
                     nausf_auth_missing_response_count += 1
+            if status_text.startswith("4") and "/nsmf-pdusession/" in path:
+                nsmf_pdu_http_4xx_count += 1
+            if status_text.startswith("4") and "/sm-data" in path:
+                nudm_sm_data_http_4xx_count += 1
 
         pdu_setup_started = any(n in ev_set for n in _PDU_SETUP_REQUEST_EVENTS)
         pdu_setup_completed = any(n in ev_set for n in _PDU_SETUP_COMPLETE_EVENTS)
@@ -242,6 +250,16 @@ class SummarizeCaptureTool(Tool):
                 and pfcp_delete_reqs == pfcp_delete_resps
             )
         )
+        likely_pdu_session_failure = (
+            pdu_setup_started
+            and not pdu_setup_completed
+            and (
+                pdu_rejected
+                or event_counts.get("PDU_SESSION_ESTABLISHMENT_REQUEST", 0) > 1
+                or nsmf_pdu_http_4xx_count > 0
+                or nudm_sm_data_http_4xx_count > 0
+            )
+        )
 
         signals = {
             "has_registration": bool(ev_set & _REGISTRATION_EVENTS),
@@ -256,6 +274,8 @@ class SummarizeCaptureTool(Tool):
             "pdu_session_setup_started": pdu_setup_started,
             "pdu_session_setup_completed": pdu_setup_completed,
             "pdu_session_rejected": pdu_rejected,
+            "nsmf_pdu_http_4xx_count": nsmf_pdu_http_4xx_count,
+            "nudm_sm_data_http_4xx_count": nudm_sm_data_http_4xx_count,
             "pfcp_setup_request_count": pfcp_setup_reqs,
             "pfcp_setup_response_count": pfcp_setup_resps,
             "pfcp_delete_request_count": pfcp_delete_reqs,
@@ -274,6 +294,7 @@ class SummarizeCaptureTool(Tool):
             "retry_pattern_present": retry_pattern_present,
             "likely_deregistration_flow": likely_deregistration_flow,
             "likely_retry_then_success": retry_pattern_present,
+            "likely_pdu_session_failure": likely_pdu_session_failure,
             "likely_pfcp_failure": (
                 pfcp_setup_reqs > 0 and pfcp_setup_reqs != pfcp_setup_resps
             ),
@@ -301,6 +322,17 @@ class SummarizeCaptureTool(Tool):
                 "SBI failure signals are present (HTTP failure or request without response); "
                 "inspect get_sbi_calls before finalizing any success verdict."
             )
+        if pdu_setup_started:
+            verdict_guardrails.append(
+                "PDU session activity is present; inspect at least one UE/session path "
+                "with list_ue_sessions before finalizing."
+            )
+        if signals["likely_pdu_session_failure"]:
+            verdict_guardrails.append(
+                "PDU session establishment started but did not complete; prioritize a "
+                "PDU/session diagnosis over a generic AUSF/SBI failure summary, and cite "
+                "a PDU_SESSION_* / 5GSM finding if available."
+            )
         if signals["likely_deregistration_flow"]:
             verdict_guardrails.append(
                 "Capture indicates deregistration or session teardown after success; "
@@ -320,6 +352,13 @@ class SummarizeCaptureTool(Tool):
                 {
                     "event": "PFCP_FAILURE_HINT",
                     "note": "PFCP session establishment requests are not matched by responses.",
+                }
+            )
+        if likely_pdu_session_failure:
+            capture_findings.append(
+                {
+                    "event": "PDU_SESSION_ESTABLISHMENT_REJECT_HINT",
+                    "note": "PDU session establishment was attempted repeatedly but never completed; check Nsmf/Nudm 4xx responses and 5GSM context.",
                 }
             )
         if signals["likely_sbi_failure"] and nausf_auth_missing_response_count > 0:

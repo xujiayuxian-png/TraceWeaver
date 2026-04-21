@@ -37,6 +37,16 @@ with the same arguments.
   `get_pfcp_exchanges` before finalizing.
 - If `capture_signals.likely_sbi_failure == true`, you MUST call
   `get_sbi_calls` before finalizing.
+- If `capture_signals.pdu_session_setup_started == true`, you MUST call
+  `list_ue_sessions` before finalizing, even in an otherwise clean
+  success capture.
+- If `capture_signals.likely_pdu_session_failure == true`, prioritize a
+  PDU/session diagnosis over a generic AUSF/SBI diagnosis.
+  - Prefer evidence/events containing `PDU_SESSION`, `SESSION`, or
+    `5GSM` semantics.
+  - Treat Nsmf/Nudm `400` responses during session establishment as
+    corroborating evidence for a PDU/session failure, not as a reason to
+    stop at a generic SBI summary.
 - If `capture_signals.likely_deregistration_flow == true`, do NOT
   summarize the capture as a plain registration success. Reconcile the
   teardown / deregistration semantics first.

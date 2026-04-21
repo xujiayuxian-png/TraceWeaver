@@ -107,6 +107,66 @@ def test_timeline_honors_limit(enriched_handle) -> None:
     assert result.data["count"] == 3
 
 
+def test_timeline_appends_teardown_finding(enriched_handle) -> None:
+    handle = enriched_handle(
+        [
+            make_record(seq=1, ran="1", amf="1", mm_type=65),
+            make_record(seq=2, ran="1", amf="1", proc=29),
+            make_record(seq=3, ran="1", amf="1", proc=41),
+        ]
+    )
+    result = GetUETimelineTool().run(
+        ToolContext(source_handle=handle), ran_ue_ngap_id="1"
+    )
+    assert [e["event"] for e in result.data["events"]] == [
+        "REGISTRATION_REQUEST",
+        "NGAP_PDU_SESSION_RESOURCE_SETUP",
+        "NGAP_UE_CONTEXT_RELEASE",
+        "DEREGISTRATION_OR_SESSION_TEARDOWN",
+    ]
+    assert result.data["events"][-1]["seq"] == 3
+
+
+def test_timeline_does_not_duplicate_explicit_deregistration(enriched_handle) -> None:
+    handle = enriched_handle(
+        [
+            make_record(seq=1, ran="1", amf="1", mm_type=65),
+            make_record(seq=2, ran="1", amf="1", mm_type=69),
+        ]
+    )
+    result = GetUETimelineTool().run(
+        ToolContext(source_handle=handle), ran_ue_ngap_id="1"
+    )
+    assert [e["event"] for e in result.data["events"]] == [
+        "REGISTRATION_REQUEST",
+        "DEREGISTRATION_REQUEST_UE_ORIG",
+    ]
+
+
+def test_timeline_appends_pdu_failure_hint_for_single_ue_capture(enriched_handle) -> None:
+    handle = enriched_handle(
+        [
+            make_record(seq=1, ran="1", amf="1", mm_type=65),
+            make_record(seq=2, ran="1", amf="1", proc=46),
+            make_record(seq=10, sm_type=193, pdu_session_id="1"),
+            make_record(seq=11, sm_type=193, pdu_session_id="1"),
+            make_record(
+                seq=12,
+                http2_method="POST",
+                http2_path="/nsmf-pdusession/v1/sm-contexts",
+                http2_status="400",
+                http2_streamid="1",
+                tcp_stream="1",
+            ),
+        ]
+    )
+    result = GetUETimelineTool().run(
+        ToolContext(source_handle=handle), ran_ue_ngap_id="1"
+    )
+    assert result.data["events"][-1]["event"] == "PDU_SESSION_ESTABLISHMENT_REJECT_HINT"
+    assert result.data["events"][-1]["seq"] == 11
+
+
 # ---- get_sbi_calls --------------------------------------------------
 
 def test_sbi_collapses_streams(enriched_handle) -> None:

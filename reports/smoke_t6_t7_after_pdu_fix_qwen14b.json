@@ -1,0 +1,93 @@
+{
+  "timestamp": "2026-04-21T01:29:34.682429+00:00",
+  "model": "openai/qwen/qwen3-14b",
+  "api_base": "http://127.0.0.1:1234/v1",
+  "passed": 1,
+  "total": 2,
+  "total_tokens": 51718,
+  "total_cost_usd": null,
+  "total_wall_clock_s": 623.43,
+  "results": [
+    {
+      "task": "T6_registration_pdu_success",
+      "pcap": "02_registration_and_pdu_session_success.pcapng",
+      "description": "Registration + PDU session success: full flow.",
+      "ok": true,
+      "reason": "ok",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "success",
+        "summary": "The UE successfully registered and established a PDU session with the 5GC.",
+        "failure_point": null,
+        "root_cause": null,
+        "evidence": [
+          {
+            "seq": 237,
+            "event": "REGISTRATION_REQUEST",
+            "note": "Initiated registration process"
+          },
+          {
+            "seq": 652,
+            "event": "NGAP_PDU_SESSION_RESOURCE_SETUP",
+            "note": "PDU session successfully established"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "list_ue_sessions"
+      ],
+      "rounds_used": 3,
+      "tool_calls_total": 2,
+      "elapsed_s": 111.33,
+      "total_tokens": 13709,
+      "total_cost_usd": null,
+      "wall_clock_s": 111.04
+    },
+    {
+      "task": "T7_pdu_session_reject",
+      "pcap": "05_pdu_session_reject.pcapng",
+      "description": "PDU session establishment reject.",
+      "ok": false,
+      "reason": "expected PDU session or 5GSM reference in evidence, got [{'seq': 204, 'event': 'REGISTRATION_REQUEST', 'note': 'UE initiated registration'}, {'seq': 263, 'event': 'NGAP_DOWNLINK_NAS_TRANSPORT', 'note': 'NAS transport after security mode command'}, {'seq': 396, 'event': 'NGAP_INITIAL_CONTEXT_SETUP', 'note': 'AMF initiated context setup'}]",
+      "stop_reason": "final",
+      "final_json": {
+        "verdict": "failure",
+        "summary": "UE attempted to establish a PDU session but failed due to repeated HTTP 4xx errors from Nsmf/Nudm services.",
+        "failure_point": "PDU_SESSION_ESTABLISHMENT_REQUEST (seq 204-2136)",
+        "root_cause": "Nsmf/Nudm service returned HTTP 4xx errors during PDU session establishment (nsmf_pdu_http_4xx_count=31, nudm_sm_data_http_4xx_count=31).",
+        "evidence": [
+          {
+            "seq": 204,
+            "event": "REGISTRATION_REQUEST",
+            "note": "UE initiated registration"
+          },
+          {
+            "seq": 263,
+            "event": "NGAP_DOWNLINK_NAS_TRANSPORT",
+            "note": "NAS transport after security mode command"
+          },
+          {
+            "seq": 396,
+            "event": "NGAP_INITIAL_CONTEXT_SETUP",
+            "note": "AMF initiated context setup"
+          }
+        ],
+        "confidence": 0.95
+      },
+      "calls": [
+        "summarize_capture",
+        "list_ue_sessions",
+        "get_sbi_calls",
+        "get_ue_timeline"
+      ],
+      "rounds_used": 6,
+      "tool_calls_total": 4,
+      "elapsed_s": 512.7,
+      "total_tokens": 38009,
+      "total_cost_usd": null,
+      "wall_clock_s": 512.39
+    }
+  ]
+}

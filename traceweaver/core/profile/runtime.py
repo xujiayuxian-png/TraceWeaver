@@ -18,16 +18,11 @@ from __future__ import annotations
 import importlib
 from typing import Callable
 
-from traceweaver.core.knowledge import KnowledgeStore
-from traceweaver.core.knowledge.file_store import FileKnowledgeStore
+from traceweaver.core.protocols import KnowledgeStore, SourceHandle, SourceSpec
+from traceweaver.builtin.knowledge.file_store import FileKnowledgeStore
+from traceweaver.builtin.sources.enriched import EnrichedSourceHandle, Enricher
 from traceweaver.core.profile.base import Profile, ProfileEnricherSpec
-from traceweaver.core.source import (
-    EnrichedSourceHandle,
-    Enricher,
-    SourceHandle,
-    SourceSpec,
-)
-from traceweaver.core.source.registry import SourceRegistry, get_default_registry
+from traceweaver.core.source.registry import SourceRegistry
 
 
 def resolve_enrichers(specs: list[ProfileEnricherSpec]) -> list[Enricher]:
@@ -64,8 +59,9 @@ def ingest_for_profile(
     enrichers (if any). Callers that have already materialized a
     handle can use `wrap_handle_for_profile` instead.
     """
-    reg = registry or get_default_registry()
-    inner = reg.build(spec)
+    if registry is None:
+        raise ValueError("registry is required")
+    inner = registry.build(spec)
     return wrap_handle_for_profile(
         profile, inner, extra_enrichers=extra_enrichers
     )

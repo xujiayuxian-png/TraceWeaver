@@ -1,16 +1,7 @@
-"""
-Tool registry: registration, OpenAI-spec export, dispatch.
-
-For M1 the registry validates arguments against `parameters_schema` in a
-minimal ("required keys present, types roughly right") way. A full JSON
-Schema validator can be swapped in later without changing this API.
-"""
-
+"""Tool registry: registration, OpenAI-spec export, dispatch."""
 from __future__ import annotations
-
 from typing import Any
-
-from traceweaver.core.tools.base import Tool, ToolContext, ToolResult
+from traceweaver.core.protocols import Tool, ToolContext, ToolResult
 
 
 _FORBIDDEN_DATA_KEYS = frozenset(

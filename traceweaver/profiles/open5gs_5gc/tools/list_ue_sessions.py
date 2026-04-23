@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from traceweaver.core.tools.base import Tool, ToolContext, ToolResult, ToolSpec
+from traceweaver.core.protocols import Tool, ToolContext, ToolResult, ToolSpec
 
 
 class ListUESessionsTool(Tool):

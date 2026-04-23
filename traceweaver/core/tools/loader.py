@@ -25,7 +25,7 @@ from __future__ import annotations
 import importlib
 from typing import Any, Callable
 
-from traceweaver.core.tools.base import Tool
+from traceweaver.core.protocols import Tool
 from traceweaver.core.tools.registry import ToolRegistry
 
 

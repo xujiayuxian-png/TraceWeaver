@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from traceweaver.core.profile import load_profile_from_dir
-from traceweaver.core.tools.base import Tool
+from traceweaver.core.protocols import Tool
 
 
 def _check_file_exists(path: Path, desc: str, errors: list[str]) -> bool:

@@ -26,17 +26,15 @@ from typing import Any
 
 from traceweaver.cli.diagnose_result import format_result
 from traceweaver.core.intelligence import LLMIntelligence
-from traceweaver.core.kernel import AgentKernel
+from traceweaver.core.kernel import AgentKernel, TaskSpec
+from traceweaver.core.protocols import ToolContext
 from traceweaver.core.profile import Profile, load_profile_from_dir
 from traceweaver.core.profile.loader import ProfileLoader
-from traceweaver.core.profile.runtime import (
-    build_knowledge_store,
-    ingest_for_profile,
-)
+from traceweaver.core.profile.runtime import build_knowledge_store
 from traceweaver.core.source import SourceSpec
-from traceweaver.core.tools.builtin import register_builtin_tools
-from traceweaver.core.tools.loader import load_profile_tools
+from traceweaver.builtin import register_builtin_sources, register_builtin_tools
 from traceweaver.core.tools.registry import ToolRegistry
+from traceweaver.core.source.registry import SourceRegistry
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -87,39 +85,44 @@ def run(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
+    # Source registry with builtins
+    source_reg = SourceRegistry()
+    register_builtin_sources(source_reg)
     try:
-        handle = ingest_for_profile(profile, source_spec)
+        handle = source_reg.build(source_spec)
     except (FileNotFoundError, RuntimeError, ImportError) as exc:
         print(f"error: source ingest failed: {exc}", file=sys.stderr)
         return 3
 
     knowledge = build_knowledge_store(profile)
 
-    registry = ToolRegistry()
-    register_builtin_tools(registry)
-    try:
-        load_profile_tools(registry, profile.tools)
-    except (ImportError, AttributeError, TypeError, ValueError) as exc:
-        print(f"error: profile tools: {exc}", file=sys.stderr)
-        return 4
+    # Tool registry with builtins + profile tools
+    tool_reg = ToolRegistry()
+    register_builtin_tools(tool_reg)
+    # TODO: load profile tools via import
+    # load_profile_tools(tool_reg, profile.tools)
+
+    # Build tools list for kernel
+    tools = list(tool_reg._tools.values())
 
     intelligence = LLMIntelligence(model=args.model, api_base=args.api_base)
-    kernel = AgentKernel(intelligence=intelligence, registry=registry)
+    kernel = AgentKernel(intelligence=intelligence, tools=tools)
 
-    result = kernel.run_with_profile(
-        profile,
-        args.question,
-        source_handle=handle,
-        knowledge_store=knowledge,
+    task = TaskSpec(
+        system_prompt=profile.llm.system_prompt or "",
+        max_rounds=profile.llm.max_rounds or 5,
+        response_schema=profile.llm.response_schema,
     )
+    ctx = ToolContext(source_handle=handle, knowledge_store=knowledge, profile_name=profile.name)
+    result = kernel.run(task, args.question, ctx)
 
     if args.format == "json":
         print(
             json.dumps(
                 {
                     "stop_reason": result.stop_reason,
-                    "rounds_used": result.trace.rounds_used(),
-                    "tool_calls_total": result.trace.tool_calls_total(),
+                    "rounds_used": len(result.trace.events),
+                    "tool_calls_total": sum(len(ev.tool_executions) for ev in result.trace.events),
                     "final_json": result.final_json,
                     "final_text": result.final_text,
                     "error": result.error,

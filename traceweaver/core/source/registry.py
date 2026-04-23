@@ -1,13 +1,7 @@
-"""
-SourceRegistry: kind -> Source factory.
-
-A tiny indirection so profiles can declare `kind: "pcap"` in YAML and
-have the kernel resolve that to the right Source class at ingest time.
-"""
+"""SourceRegistry: kind -> Source factory."""
 
 from __future__ import annotations
-
-from traceweaver.core.source.base import Source, SourceHandle, SourceSpec
+from traceweaver.core.protocols import Source, SourceHandle, SourceSpec
 
 
 class SourceRegistry:
@@ -34,25 +28,4 @@ class SourceRegistry:
         return self._sources[spec.kind].ingest(spec)
 
 
-_DEFAULT_REGISTRY: SourceRegistry | None = None
-
-
-def get_default_registry() -> SourceRegistry:
-    """
-    Lazy-initialized process-wide registry pre-populated with the
-    built-in sources. The registry is mutable; tests and extensions
-    can add custom kinds.
-    """
-    global _DEFAULT_REGISTRY
-    if _DEFAULT_REGISTRY is None:
-        reg = SourceRegistry()
-        from traceweaver.core.source.fake import FakeSource
-        from traceweaver.core.source.pcap import PcapSource
-
-        reg.register(FakeSource())
-        reg.register(PcapSource())
-        _DEFAULT_REGISTRY = reg
-    return _DEFAULT_REGISTRY
-
-
-__all__ = ["SourceRegistry", "get_default_registry"]
+__all__ = ["SourceRegistry"]

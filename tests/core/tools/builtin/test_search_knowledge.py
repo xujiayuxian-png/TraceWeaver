@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from traceweaver.core.knowledge import FileKnowledgeStore
+from traceweaver.builtin.knowledge.file_store import FileKnowledgeStore
 from traceweaver.core.profile.base import ProfileKnowledgeItem
-from traceweaver.core.tools.base import ToolContext
-from traceweaver.core.tools.builtin.search_knowledge import SearchKnowledgeTool
+from traceweaver.core.protocols import ToolContext
+from traceweaver.builtin.tools.search_knowledge import SearchKnowledgeTool
 
 
 FIXTURE = (

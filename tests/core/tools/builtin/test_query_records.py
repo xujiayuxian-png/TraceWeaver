@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from traceweaver.core.source import Record, SourceSpec
-from traceweaver.core.source.fake import FakeSource
-from traceweaver.core.tools.base import ToolContext
-from traceweaver.core.tools.builtin.query_records import QueryRecordsTool
+from traceweaver.core.protocols import Record, SourceSpec, ToolContext
+from traceweaver.builtin.sources.fake import FakeSource
+from traceweaver.builtin.tools.query_records import QueryRecordsTool
 
 
 def _handle(records: list[Record]):

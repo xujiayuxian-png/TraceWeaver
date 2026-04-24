@@ -53,8 +53,6 @@ enrichers:
     function: enrich
 
 tools:
-  - module: traceweaver.profiles.open5gs_5gc.tools.summarize_capture
-    class: SummarizeCaptureTool
   - module: traceweaver.profiles.open5gs_5gc.tools.list_ue_sessions
     class: ListUESessionsTool
   - module: traceweaver.profiles.open5gs_5gc.tools.get_ue_timeline

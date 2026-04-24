@@ -69,6 +69,7 @@ class AgentKernel:
                         response_schema=task.response_schema,
                     )
                 )
+                state.responses.append(resp)
             except Exception as exc:
                 return self._finalize(state, "intelligence_error", error=str(exc))
 
@@ -91,12 +92,26 @@ class AgentKernel:
         state: LoopState,
     ) -> AgentResult | None:
         if not task.response_schema:
+            state.append_event(
+                TraceEvent(
+                    round_index=round_idx,
+                    is_final=True,
+                    assistant_content=resp.final_text or "",
+                )
+            )
             return self._finalize(state, "final", resp=resp)
 
         valid, error_msg = self.schema_guard.check(
             resp.final_json, task.response_schema
         )
         if valid:
+            state.append_event(
+                TraceEvent(
+                    round_index=round_idx,
+                    is_final=True,
+                    assistant_content=resp.final_text or "",
+                )
+            )
             return self._finalize(state, "final", resp=resp)
 
         # Schema retry
@@ -188,13 +203,42 @@ class AgentKernel:
     ) -> AgentResult:
         wall_clock = time.perf_counter() - state.t0
         trace = AgentTrace(events=state.events, wall_clock_s=wall_clock)
+        # Aggregate tokens/cost from all responses if available
+        total_tokens = sum(
+            (r.total_tokens or 0) for r in state.responses if r.total_tokens
+        )
+        total_cost = sum(
+            (r.total_cost_usd or 0) for r in state.responses if r.total_cost_usd
+        )
         return AgentResult(
             stop_reason=stop_reason,
             final_text=resp.final_text if resp else None,
             final_json=resp.final_json if resp else None,
             trace=trace,
             error=error,
-            total_tokens=trace.total_tokens(),
-            total_cost_usd=trace.total_cost_usd(),
+            total_tokens=total_tokens,
+            total_cost_usd=total_cost,
             wall_clock_s=wall_clock,
         )
+
+    def run_with_profile(
+        self,
+        profile,
+        user_request: str,
+        source_handle=None,
+        knowledge_store=None,
+        response_schema=None,
+    ):
+        """Run kernel with a profile configuration."""
+        from traceweaver.core.protocols import ToolContext
+
+        llm = profile.llm
+        schema = response_schema or llm.response_schema
+
+        task = TaskSpec(
+            system_prompt=llm.system_prompt,
+            max_rounds=llm.max_rounds,
+            response_schema=schema,
+        )
+        ctx = ToolContext(source_handle=source_handle, knowledge_store=knowledge_store)
+        return self.run(task, user_request, ctx)

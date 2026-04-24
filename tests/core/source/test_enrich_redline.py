@@ -5,11 +5,8 @@ from __future__ import annotations
 
 import pytest
 
-from traceweaver.core.source.base import Record, SourceHandle
-from traceweaver.core.source.enrich import (
-    _FORBIDDEN_ENRICH_KEYS,
-    apply_enrichers,
-)
+from traceweaver.core.protocols import Record, SourceHandle
+from traceweaver.builtin.sources.enriched import _FORBIDDEN as _FORBIDDEN_ENRICH_KEYS, apply_enrichers
 
 
 def _make_record(fields: dict | None = None) -> Record:

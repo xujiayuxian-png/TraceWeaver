@@ -4,13 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from traceweaver.core.source import (
-    Record,
-    SourceRegistry,
-    SourceSpec,
-    get_default_registry,
-)
-from traceweaver.core.source.fake import FakeSource
+from traceweaver.core.protocols import Record, SourceSpec
+from traceweaver.core.source.registry import SourceRegistry
+from traceweaver.builtin.sources.fake import FakeSource
 
 
 def _rec(seq: int, **fields) -> Record:
@@ -120,8 +116,10 @@ def test_ingest_rejects_wrong_kind() -> None:
         src.ingest(SourceSpec(kind="pcap", uri="x", options={}))
 
 
-def test_default_registry_exposes_fake_and_pcap() -> None:
-    reg = get_default_registry()
+def test_registry_exposes_fake_and_pcap() -> None:
+    from traceweaver.builtin import register_builtin_sources
+    reg = SourceRegistry()
+    register_builtin_sources(reg)
     assert reg.has("fake")
     assert reg.has("pcap")
 

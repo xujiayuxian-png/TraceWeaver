@@ -26,6 +26,8 @@ class QueryRecordsTool(Tool):
             return ToolResult(data={"records": [], "count": 0, "hint": "no source loaded"})
 
         flt = kwargs.get("filter")
+        if flt is not None and not isinstance(flt, dict):
+            return ToolResult(data={"records": [], "count": 0, "hint": "filter must be an object"})
         fields = kwargs.get("fields")
         limit = kwargs.get("limit")
         if limit is None:

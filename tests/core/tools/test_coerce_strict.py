@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from traceweaver.core.tools.base import Tool, ToolContext, ToolResult, ToolSpec
+from traceweaver.core.protocols import Tool, ToolContext, ToolResult, ToolSpec
 from traceweaver.core.tools.registry import ToolRegistry
 
 

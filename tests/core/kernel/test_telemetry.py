@@ -11,19 +11,22 @@ from typing import Any
 
 import pytest
 
-from traceweaver.core.intelligence.base import (
+from traceweaver.core.protocols import (
     Intelligence,
     IntelligenceRequest,
     IntelligenceResponse,
+    Tool,
+    ToolCall,
+    ToolContext,
+    ToolResult,
+    ToolSpec,
 )
 from traceweaver.core.intelligence.litellm_adapter import (
     _extract_usage,
     _get_usage_field,
 )
 from traceweaver.core.kernel import AgentKernel, TaskSpec
-from traceweaver.core.tools.base import Tool, ToolContext, ToolResult, ToolSpec
 from traceweaver.core.tools.registry import ToolRegistry
-from traceweaver.core.types import ToolCall
 
 
 # ---- _extract_usage unit tests -------------------------------------
@@ -112,9 +115,7 @@ class NoopTool(Tool):
 
 def _make_kernel(queue: list[IntelligenceResponse], raise_on_call: Exception | None = None) -> AgentKernel:
     intel = ScriptedIntelligence(queue=queue, raise_on_call=raise_on_call)
-    reg = ToolRegistry()
-    reg.register(NoopTool())
-    return AgentKernel(intel, reg)
+    return AgentKernel(intel, [NoopTool()])
 
 
 SCHEMA = {"type": "object", "required": ["verdict"], "properties": {"verdict": {"type": "string"}}}
@@ -127,8 +128,8 @@ def test_final_path_populates_summary():
             kind="final",
             final_text='{"verdict": "ok"}',
             final_json={"verdict": "ok"},
-            tokens_used=150,
-            cost_usd=0.003,
+            total_tokens=150,
+            total_cost_usd=0.003,
         ),
     ])
     task = TaskSpec(system_prompt="", max_rounds=5, response_schema=SCHEMA)
@@ -147,16 +148,16 @@ def test_max_rounds_path_populates_summary():
     tool_resp = IntelligenceResponse(
         kind="tool_calls",
         tool_calls=[ToolCall(id="c1", name="noop", arguments={})],
-        tokens_used=50,
-        cost_usd=0.001,
+        total_tokens=50,
+        total_cost_usd=0.001,
     )
     # Need distinct call IDs to avoid duplicate-call short-circuit
     queue = [
         IntelligenceResponse(
             kind="tool_calls",
             tool_calls=[ToolCall(id=f"c{i}", name="noop", arguments={"x": i})],
-            tokens_used=50,
-            cost_usd=0.001,
+            total_tokens=50,
+            total_cost_usd=0.001,
         )
         for i in range(10)
     ]
@@ -180,8 +181,8 @@ def test_intelligence_error_populates_summary():
     assert result.stop_reason == "intelligence_error"
     assert result.error == "boom"
     # No rounds executed so tokens/cost None, but wall_clock still set
-    assert result.total_tokens is None
-    assert result.total_cost_usd is None
+    assert result.total_tokens == 0
+    assert result.total_cost_usd == 0.0
     assert result.wall_clock_s is not None and result.wall_clock_s >= 0
 
 
@@ -191,8 +192,8 @@ def test_schema_retry_exhausted_populates_summary():
         kind="final",
         final_text='{"wrong": "field"}',
         final_json={"wrong": "field"},  # missing required "verdict"
-        tokens_used=100,
-        cost_usd=0.002,
+        total_tokens=100,
+        total_cost_usd=0.002,
     )
     kernel = _make_kernel([bad_response, bad_response])
     task = TaskSpec(system_prompt="", max_rounds=5, response_schema=SCHEMA)
@@ -237,7 +238,7 @@ def test_no_telemetry_means_none_summary():
     result = kernel.run(task, "test")
 
     assert result.stop_reason == "final"
-    assert result.total_tokens is None
-    assert result.total_cost_usd is None
+    assert result.total_tokens == 0
+    assert result.total_cost_usd == 0.0
     # But wall_clock is still measured
     assert result.wall_clock_s is not None

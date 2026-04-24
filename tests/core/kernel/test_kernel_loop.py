@@ -13,15 +13,18 @@ from typing import Any
 
 import pytest
 
-from traceweaver.core.intelligence.base import (
+from traceweaver.core.protocols import (
     Intelligence,
     IntelligenceRequest,
     IntelligenceResponse,
+    Tool,
+    ToolCall,
+    ToolContext,
+    ToolResult,
+    ToolSpec,
 )
 from traceweaver.core.kernel import AgentKernel, TaskSpec
-from traceweaver.core.tools.base import Tool, ToolContext, ToolResult, ToolSpec
 from traceweaver.core.tools.registry import ToolRegistry
-from traceweaver.core.types import ToolCall
 
 
 # ---- scripted intelligence ------------------------------------------------
@@ -101,11 +104,8 @@ class BoomTool(Tool):
         raise RuntimeError("kaboom")
 
 
-def _registry(*tools: Tool) -> ToolRegistry:
-    reg = ToolRegistry()
-    for t in tools:
-        reg.register(t)
-    return reg
+def _registry(*tools: Tool) -> list[Tool]:
+    return list(tools)
 
 
 def _final(text: str = "", as_json: dict | None = None) -> IntelligenceResponse:
@@ -130,10 +130,10 @@ def test_immediate_final_no_tool_calls():
 
     result = kernel.run(TaskSpec(system_prompt="sys"), "say hi")
 
-    assert result.ok
+    assert result.stop_reason == "final"
     assert result.final_text == "Hello."
-    assert result.trace.rounds_used() == 1
-    assert result.trace.tool_calls_total() == 0
+    assert len(result.trace.events) == 1
+    assert sum(len(e.tool_executions) for e in result.trace.events if not e.is_final) == 0
     assert len(intel.calls) == 1
     assert intel.calls[0].messages[0].role == "user"
     assert intel.calls[0].messages[0].content == "say hi"
@@ -151,11 +151,11 @@ def test_single_tool_then_final():
 
     result = kernel.run(TaskSpec(system_prompt="sys"), "add 2 and 3")
 
-    assert result.ok
-    assert result.trace.rounds_used() == 2
-    assert result.trace.tool_calls_total() == 1
+    assert result.stop_reason == "final"
+    assert len(result.trace.events) == 2
+    assert sum(len(e.tool_executions) for e in result.trace.events if not e.is_final) == 1
     assert result.trace.events[0].tool_executions[0].data == {"sum": 5}
-    assert result.trace.called("add")
+    assert any(any(ex.call.name == "add" for ex in e.tool_executions) for e in result.trace.events)
 
     second_req = intel.calls[1]
     msgs = second_req.messages
@@ -176,9 +176,9 @@ def test_multi_round_dependent_calls():
 
     result = kernel.run(TaskSpec(system_prompt="sys"), "add twice")
 
-    assert result.ok
-    assert result.trace.rounds_used() == 3
-    assert result.trace.tool_calls_total() == 2
+    assert result.stop_reason == "final"
+    assert len(result.trace.events) == 3
+    assert sum(len(e.tool_executions) for e in result.trace.events if not e.is_final) == 2
 
 
 def test_max_rounds_exceeded():
@@ -192,7 +192,7 @@ def test_max_rounds_exceeded():
     )
 
     assert result.stop_reason == "max_rounds"
-    assert result.trace.rounds_used() == 3
+    assert len(result.trace.events) == 3
     assert result.final_text is None
 
 
@@ -221,12 +221,12 @@ def test_schema_retry_then_success():
         "diagnose",
     )
 
-    assert result.ok
+    assert result.stop_reason == "final"
     assert result.final_json == {"verdict": "FAIL", "reason": "auth"}
-    assert result.trace.rounds_used() == 2
+    assert len(result.trace.events) == 2
     corrective_user = intel.calls[1].messages[-1]
     assert corrective_user.role == "user"
-    assert "missing required fields" in corrective_user.content
+    assert "Missing required fields" in corrective_user.content
 
 
 def test_schema_retry_exhausted():
@@ -245,7 +245,7 @@ def test_schema_retry_exhausted():
     )
 
     assert result.stop_reason == "schema_retry_exhausted"
-    assert not result.ok
+    assert result.stop_reason != "final"
 
 
 def test_forbidden_tool_returns_error_but_loop_continues():
@@ -263,7 +263,7 @@ def test_forbidden_tool_returns_error_but_loop_continues():
         "try to use echo",
     )
 
-    assert result.ok
+    assert result.stop_reason == "final"
     exec0 = result.trace.events[0].tool_executions[0]
     assert exec0.ok is False
     assert "forbidden" in (exec0.error or "")
@@ -281,7 +281,7 @@ def test_unknown_tool_reported_but_not_fatal():
 
     result = kernel.run(TaskSpec(system_prompt="sys"), "...")
 
-    assert result.ok
+    assert result.stop_reason == "final"
     exec0 = result.trace.events[0].tool_executions[0]
     assert exec0.ok is False
     assert "unknown tool" in (exec0.error or "")
@@ -298,7 +298,7 @@ def test_tool_raising_exception_does_not_kill_loop():
 
     result = kernel.run(TaskSpec(system_prompt="sys"), "...")
 
-    assert result.ok
+    assert result.stop_reason == "final"
     exec0 = result.trace.events[0].tool_executions[0]
     assert exec0.ok is False
     assert "RuntimeError" in (exec0.error or "")
@@ -313,7 +313,7 @@ def test_intelligence_exception_stops_with_error():
 
     assert result.stop_reason == "intelligence_error"
     assert result.error is not None and "llm down" in result.error
-    assert result.trace.rounds_used() == 0
+    assert len(result.trace.events) == 0
 
 
 def test_forbidden_data_key_rejected_by_registry():
@@ -340,14 +340,17 @@ def test_forbidden_data_key_rejected_by_registry():
 
     # The tool execution fails (registry raised), the kernel wraps it
     # as an error result and carries on to the next round.
-    assert result.ok
+    assert result.stop_reason == "final"
     exec0 = result.trace.events[0].tool_executions[0]
     assert exec0.ok is False
     assert "forbidden data keys" in (exec0.error or "")
 
 
 def test_openai_tool_spec_rendered_correctly():
-    reg = _registry(EchoTool(), AddTool())
+    from traceweaver.core.tools.registry import ToolRegistry
+    reg = ToolRegistry()
+    reg.register(EchoTool())
+    reg.register(AddTool())
     specs = reg.specs()
     assert {s["function"]["name"] for s in specs} == {"echo", "add"}
     for s in specs:
@@ -357,13 +360,17 @@ def test_openai_tool_spec_rendered_correctly():
 
 def test_registry_invoke_coerces_string_integers():
     """LLMs often pass numeric args as strings; the registry coerces."""
-    reg = _registry(AddTool())
+    from traceweaver.core.tools.registry import ToolRegistry
+    reg = ToolRegistry()
+    reg.register(AddTool())
     result = reg.invoke("add", {"a": "2", "b": "3"}, ToolContext())
     assert result.data == {"sum": 5}
 
 
 def test_registry_missing_required_arg_raises():
-    reg = _registry(AddTool())
+    from traceweaver.core.tools.registry import ToolRegistry
+    reg = ToolRegistry()
+    reg.register(AddTool())
     with pytest.raises(ValueError, match="missing required args"):
         reg.invoke("add", {"a": 1}, ToolContext())
 
@@ -387,7 +394,7 @@ def test_duplicate_tool_call_short_circuits():
 
     result = kernel.run(TaskSpec(system_prompt="sys"), "...")
 
-    assert result.ok
+    assert result.stop_reason == "final"
     exec_round1 = result.trace.events[0].tool_executions[0]
     exec_round2 = result.trace.events[1].tool_executions[0]
     assert exec_round1.ok is True
@@ -408,7 +415,7 @@ def test_duplicate_detection_is_argument_sensitive():
 
     result = kernel.run(TaskSpec(system_prompt="sys"), "...")
 
-    assert result.ok
+    assert result.stop_reason == "final"
     for ev in result.trace.events[:2]:
         for ex in ev.tool_executions:
             assert ex.ok is True, f"unexpected error: {ex.error!r}"

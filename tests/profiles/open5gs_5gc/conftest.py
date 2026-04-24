@@ -8,8 +8,9 @@ import pytest
 
 from traceweaver.core.profile import Profile
 from traceweaver.core.profile.yaml_loader import load_profile_from_dir
-from traceweaver.core.source import EnrichedSourceHandle, Record, SourceSpec
-from traceweaver.core.source.fake import FakeSource
+from traceweaver.core.protocols import Record, SourceSpec
+from traceweaver.builtin.sources.enriched import EnrichedSourceHandle
+from traceweaver.builtin.sources.fake import FakeSource
 
 
 PROFILE_ROOT = (

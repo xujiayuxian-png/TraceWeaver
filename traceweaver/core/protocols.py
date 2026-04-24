@@ -125,6 +125,8 @@ class IntelligenceResponse(BaseModel):
     final_json: dict[str, Any] | None = None
     reasoning: str | None = None
     assistant_content: str | None = None
+    total_tokens: int | None = None
+    total_cost_usd: float | None = None
 
 
 class Intelligence(ABC):
@@ -134,6 +136,7 @@ class Intelligence(ABC):
 
 class KnowledgeHit(BaseModel):
     content: str
+    title: str = ""
     score: float = 0.0
 
 

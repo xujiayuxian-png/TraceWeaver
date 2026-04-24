@@ -35,6 +35,11 @@ class AgentTrace:
     def total_cost_usd(self) -> float:
         return 0.0
 
+    def tool_time_s(self) -> float:
+        # Tool execution time is not tracked individually in this implementation
+        # Return 0.0 as a placeholder
+        return 0.0
+
 
 @dataclass(frozen=True)
 class AgentResult:

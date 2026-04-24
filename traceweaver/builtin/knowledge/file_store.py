@@ -57,7 +57,18 @@ class FileKnowledgeStore(KnowledgeStore):
                     continue
                 self._blocks.append(_IndexedBlock(path=path, title=title, tags=tags, content=body))
 
-    def search(self, query: str, *, top_k: int = 5, tags: list[str] | None = None) -> list[KnowledgeHit]:
+    @staticmethod
+    def empty() -> "FileKnowledgeStore":
+        """Return an empty knowledge store for testing."""
+        return FileKnowledgeStore(items=[])
+
+    def list_sources(self) -> list[Path]:
+        """Return list of source file paths."""
+        return list(self._sources)
+
+    def search(self, query: str, *, top_k: int = 5, limit: int | None = None, tags: list[str] | None = None) -> list[KnowledgeHit]:
+        """Search knowledge store. `limit` is alias for `top_k` for backward compatibility."""
+        effective_top_k = limit if limit is not None else top_k
         tokens = _tokenize(query or "")
         if not tokens:
             return []
@@ -73,8 +84,8 @@ class FileKnowledgeStore(KnowledgeStore):
                 scored.append((score, blk))
         scored.sort(key=lambda pair: pair[0], reverse=True)
         hits: list[KnowledgeHit] = []
-        for score, blk in scored[:max(0, top_k)]:
-            hits.append(KnowledgeHit(content=blk.content, score=score))
+        for score, blk in scored[:max(0, effective_top_k)]:
+            hits.append(KnowledgeHit(content=blk.content, title=blk.title, score=score))
         return hits
 
 __all__ = ["FileKnowledgeStore"]

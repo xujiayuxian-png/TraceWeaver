@@ -17,19 +17,15 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from traceweaver.core.intelligence.base import (
-    Intelligence,
-    IntelligenceRequest,
-    IntelligenceResponse,
+from traceweaver.core.protocols import (
+    Intelligence, IntelligenceRequest, IntelligenceResponse, Record, SourceSpec, ToolCall
 )
 from traceweaver.core.kernel import AgentKernel
-from traceweaver.core.knowledge import FileKnowledgeStore
+from traceweaver.builtin.knowledge.file_store import FileKnowledgeStore
 from traceweaver.core.profile import load_profile_from_dir
-from traceweaver.core.source import Record, SourceSpec
-from traceweaver.core.source.fake import FakeSource
-from traceweaver.core.tools.builtin import register_builtin_tools
+from traceweaver.builtin.sources.fake import FakeSource
+from traceweaver.builtin import register_builtin_tools
 from traceweaver.core.tools.registry import ToolRegistry
-from traceweaver.core.types import ToolCall
 
 
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "profiles" / "minimal"
@@ -97,7 +93,7 @@ def test_kernel_with_profile_wires_source_and_knowledge() -> None:
         ]
     )
 
-    kernel = AgentKernel(intelligence=intelligence, registry=registry)
+    kernel = AgentKernel(intelligence, list(registry))
     result = kernel.run_with_profile(
         profile,
         user_request="Find the red frame and check the registration reject docs.",
@@ -138,7 +134,7 @@ def test_kernel_with_profile_uses_profile_max_rounds() -> None:
             for i in range(profile.llm.max_rounds)
         ]
     )
-    kernel = AgentKernel(intelligence=intelligence, registry=registry)
+    kernel = AgentKernel(intelligence, list(registry))
     result = kernel.run_with_profile(
         profile,
         "loop",

@@ -4,13 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from traceweaver.core.source import (
-    EnrichedSourceHandle,
-    Record,
-    SourceSpec,
-    apply_enrichers,
-)
-from traceweaver.core.source.fake import FakeSource
+from traceweaver.core.protocols import Record, SourceSpec
+from traceweaver.builtin.sources.enriched import EnrichedSourceHandle, apply_enrichers
+from traceweaver.builtin.sources.fake import FakeSource
 
 
 def _handle(records: list[Record]):

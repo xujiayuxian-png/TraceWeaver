@@ -10,14 +10,17 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from traceweaver.core.kernel.trace import AgentResult
+from traceweaver.core.trace import AgentResult
 
 
 def format_result(result: AgentResult, *, show_trace: bool = False) -> str:
     lines: list[str] = []
     lines.append(f"stop_reason: {result.stop_reason}")
-    lines.append(f"rounds_used: {result.trace.rounds_used()}")
-    lines.append(f"tool_calls_total: {result.trace.tool_calls_total()}")
+    lines.append(f"rounds_used: {len(result.trace.events)}")
+    tool_calls_total = sum(
+        len(e.tool_executions) for e in result.trace.events if not e.is_final
+    )
+    lines.append(f"tool_calls_total: {tool_calls_total}")
 
     if result.final_json is not None:
         lines.append("")

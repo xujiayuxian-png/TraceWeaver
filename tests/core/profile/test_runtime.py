@@ -19,8 +19,9 @@ from traceweaver.core.profile.runtime import (
     wrap_handle_for_profile,
 )
 from traceweaver.core.profile.yaml_loader import load_profile_from_dir
-from traceweaver.core.source import EnrichedSourceHandle, Record, SourceSpec
-from traceweaver.core.source.fake import FakeSource
+from traceweaver.core.protocols import Record, SourceSpec
+from traceweaver.builtin.sources.enriched import EnrichedSourceHandle
+from traceweaver.builtin.sources.fake import FakeSource
 
 
 # ---- shared helpers ----
@@ -148,6 +149,9 @@ def test_extra_enrichers_appended_after_profile_chain(tmp_path: Path) -> None:
 # ---- ingest_for_profile ----
 
 def test_ingest_for_profile_builds_and_wraps(tmp_path: Path) -> None:
+    from traceweaver.core.source.registry import SourceRegistry
+    from traceweaver.builtin.sources.fake import FakeSource
+
     p = _bare_profile(
         tmp_path,
         enrichers=[
@@ -162,7 +166,9 @@ def test_ingest_for_profile_builds_and_wraps(tmp_path: Path) -> None:
         uri="memory://t",
         options={"records_object": [_rec(1), _rec(2)]},
     )
-    handle = ingest_for_profile(p, spec)
+    registry = SourceRegistry()
+    registry.register(FakeSource())
+    handle = ingest_for_profile(p, spec, registry=registry)
     assert isinstance(handle, EnrichedSourceHandle)
     assert all(r.fields.get("hi") == "there" for r in handle.iter_records())
 

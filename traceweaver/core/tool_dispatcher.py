@@ -49,15 +49,27 @@ class ToolDispatcher:
             tool = self.tools[call.name]
             try:
                 result = tool.run(ctx, **call.arguments)
-                executions.append(
-                    ToolExecution(
-                        call=call,
-                        ok=True,
-                        data=result.data,
-                        refs=result.refs,
-                        truncated=result.truncated,
+                # Check forbidden keys in result data
+                forbidden = {"verdict", "root_cause", "failure_point", "confidence"}
+                if forbidden & set(result.data.keys()):
+                    bad = sorted(forbidden & set(result.data.keys()))
+                    executions.append(
+                        ToolExecution(
+                            call=call,
+                            ok=False,
+                            error=f"forbidden data keys: {bad}",
+                        )
                     )
-                )
+                else:
+                    executions.append(
+                        ToolExecution(
+                            call=call,
+                            ok=True,
+                            data=result.data,
+                            refs=result.refs,
+                            truncated=result.truncated,
+                        )
+                    )
             except Exception as exc:
                 executions.append(
                     ToolExecution(

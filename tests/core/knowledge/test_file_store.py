@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from traceweaver.core.knowledge import FileKnowledgeStore
+from traceweaver.builtin.knowledge.file_store import FileKnowledgeStore
 from traceweaver.core.profile.base import ProfileKnowledgeItem
 
 

@@ -134,7 +134,7 @@ def run(args: argparse.Namespace) -> int:
     else:
         print(format_result(result, show_trace=args.trace))
 
-    return 0 if result.ok else 1
+    return 0 if result.stop_reason == "final" else 1
 
 
 # ---- helpers ----------------------------------------------------------

@@ -372,7 +372,7 @@ class LLMIntelligence(Intelligence):
             )
 
         # Extract telemetry from response (P1.1)
-        tokens_used, cost_usd = _extract_usage(resp, self.model)
+        total_tokens, total_cost_usd = _extract_usage(resp, self.model)
 
         if tool_calls:
             return IntelligenceResponse(
@@ -380,8 +380,8 @@ class LLMIntelligence(Intelligence):
                 tool_calls=tool_calls,
                 reasoning=reasoning or None,
                 assistant_content=content,
-                tokens_used=tokens_used,
-                cost_usd=cost_usd,
+                total_tokens=total_tokens,
+                total_cost_usd=total_cost_usd,
             )
 
         return IntelligenceResponse(
@@ -390,8 +390,8 @@ class LLMIntelligence(Intelligence):
             final_json=final_json,
             reasoning=reasoning or None,
             assistant_content=content,
-            tokens_used=tokens_used,
-            cost_usd=cost_usd,
+            total_tokens=total_tokens,
+            total_cost_usd=total_cost_usd,
         )
 
 

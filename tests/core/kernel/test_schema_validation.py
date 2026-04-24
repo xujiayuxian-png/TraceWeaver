@@ -11,17 +11,39 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
-from traceweaver.core.intelligence.base import (
+from traceweaver.core.protocols import (
     Intelligence,
     IntelligenceRequest,
     IntelligenceResponse,
 )
 from traceweaver.core.kernel import AgentKernel, TaskSpec
-from traceweaver.core.kernel.kernel import (
-    _schema_missing_keys,
-    _schema_validate_full,
-)
+from traceweaver.core.schema_guard import SchemaGuard
 from traceweaver.core.tools.registry import ToolRegistry
+
+
+# ---- helper functions to match old API --------------------------------
+
+_guard = SchemaGuard()
+
+
+def _schema_validate_full(schema: dict | None, data: dict | None) -> list[str]:
+    """Validate data against schema, return list of error messages."""
+    if schema is None:
+        return []
+    if data is None:
+        return ["no-json: no data provided"]
+    valid, error_msg = _guard.check(data, schema)
+    if valid:
+        return []
+    return [error_msg or "validation failed"]
+
+
+def _schema_missing_keys(schema: dict, data: dict | None) -> list[str]:
+    """Return list of missing required keys."""
+    if data is None:
+        return schema.get("required", [])
+    required = schema.get("required", [])
+    return [k for k in required if k not in data]
 
 
 # ---- unit tests on validator ----------------------------------------
@@ -134,16 +156,16 @@ def test_kernel_retries_on_enum_violation():
             _mk_final({"verdict": "success"}),  # valid
         ]
     )
-    kernel = AgentKernel(intel, ToolRegistry())
+    kernel = AgentKernel(intel, [])
 
     result = kernel.run(
         TaskSpec(system_prompt="sys", response_schema=schema, max_rounds=5),
         "diagnose",
     )
 
-    assert result.ok
+    assert result.stop_reason == "final"
     assert result.final_json == {"verdict": "success"}
-    assert result.trace.rounds_used() == 2
+    assert len(result.trace.events) == 2
     # second call must have received a corrective user turn
     corrective_user = intel.calls[1].messages[-1]
     assert corrective_user.role == "user"
@@ -166,13 +188,13 @@ def test_kernel_retries_on_type_violation():
             _mk_final({"verdict": "ok", "confidence": 0.9}),     # valid
         ]
     )
-    kernel = AgentKernel(intel, ToolRegistry())
+    kernel = AgentKernel(intel, [])
 
     result = kernel.run(
         TaskSpec(system_prompt="sys", response_schema=schema, max_rounds=5),
         "diagnose",
     )
 
-    assert result.ok
+    assert result.stop_reason == "final"
     assert result.final_json["confidence"] == 0.9
-    assert result.trace.rounds_used() == 2
+    assert len(result.trace.events) == 2

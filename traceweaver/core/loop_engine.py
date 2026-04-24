@@ -12,6 +12,7 @@ class LoopState:
     schema_retries: int = 0
     seen_calls: dict[tuple[str, str], int] = field(default_factory=dict)
     t0: float = 0.0
+    responses: list[Any] = field(default_factory=list)
 
     def append_message(self, msg: Message) -> None:
         self.messages.append(msg)

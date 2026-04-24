@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from tests.profiles.open5gs_5gc.conftest import make_record
 
-from traceweaver.core.tools.base import ToolContext
+from traceweaver.core.protocols import ToolContext
 from traceweaver.profiles.open5gs_5gc.tools.get_nas_cause_meaning import (
     GetNasCauseMeaningTool,
 )

@@ -33,7 +33,9 @@ class GetRecordsAroundTool(Tool):
 
         try:
             seq = int(kwargs["seq"])
-        except (KeyError, TypeError, ValueError):
+        except KeyError:
+            return ToolResult(data={"records": [], "count": 0, "hint": "seq is required"})
+        except (TypeError, ValueError):
             return ToolResult(data={"records": [], "count": 0, "hint": "seq must be an integer"})
 
         before = _clamp(kwargs.get("before", 2), 0, _MAX_WINDOW)

@@ -11,7 +11,7 @@ from typing import Sequence
 import pytest
 
 from traceweaver.core.source import SourceSpec
-from traceweaver.core.source.pcap import (
+from traceweaver.builtin.sources.pcap import (
     PcapSource,
     parse_tshark_fields_output,
 )

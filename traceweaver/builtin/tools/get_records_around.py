@@ -1,6 +1,7 @@
 """get_records_around: retrieve a window of records centered on a seq."""
 from __future__ import annotations
 from typing import Any
+from pydantic import BaseModel, Field
 from traceweaver.core.protocols import Tool, ToolContext, ToolResult, ToolSpec
 
 _MAX_WINDOW = 20
@@ -12,19 +13,16 @@ def _clamp(value: Any, lo: int, hi: int) -> int:
         return lo
     return max(lo, min(v, hi))
 
+class GetRecordsAroundArgs(BaseModel):
+    seq: int = Field(description="Anchor seq (frame.number or log line)")
+    before: int = Field(default=2, description="Records before anchor (0-20)")
+    after: int = Field(default=2, description="Records after anchor (0-20)")
+
 class GetRecordsAroundTool(Tool):
-    spec = ToolSpec(
+    spec = ToolSpec.from_pydantic(
+        GetRecordsAroundArgs,
         name="get_records_around",
         description="Return records immediately before and after a given seq anchor.",
-        parameters_schema={
-            "type": "object",
-            "properties": {
-                "seq": {"type": "integer", "description": "Anchor seq (frame.number or log line)"},
-                "before": {"type": "integer", "description": "Records before anchor (0-20)", "minimum": 0, "maximum": _MAX_WINDOW},
-                "after": {"type": "integer", "description": "Records after anchor (0-20)", "minimum": 0, "maximum": _MAX_WINDOW},
-            },
-            "required": ["seq"],
-        },
     )
 
     def run(self, ctx: ToolContext, **kwargs: Any) -> ToolResult:
@@ -32,14 +30,13 @@ class GetRecordsAroundTool(Tool):
             return ToolResult(data={"records": [], "count": 0, "hint": "no source loaded"})
 
         try:
-            seq = int(kwargs["seq"])
-        except KeyError:
-            return ToolResult(data={"records": [], "count": 0, "hint": "seq is required"})
-        except (TypeError, ValueError):
-            return ToolResult(data={"records": [], "count": 0, "hint": "seq must be an integer"})
+            args = GetRecordsAroundArgs.model_validate(kwargs)
+        except Exception as e:
+            return ToolResult(data={"records": [], "count": 0, "hint": f"invalid arguments: {e}"})
 
-        before = _clamp(kwargs.get("before", 2), 0, _MAX_WINDOW)
-        after = _clamp(kwargs.get("after", 2), 0, _MAX_WINDOW)
+        seq = args.seq
+        before = _clamp(args.before, 0, _MAX_WINDOW)
+        after = _clamp(args.after, 0, _MAX_WINDOW)
 
         window = ctx.source_handle.get_records_around(seq, before=before, after=after)
         rows: list[dict[str, Any]] = []

@@ -72,4 +72,24 @@ def test_bad_filter_type_is_reported_not_raised() -> None:
     handle = _handle([_rec(1)])
     tool = QueryRecordsTool()
     out = tool.run(ToolContext(source_handle=handle), filter="oops")
-    assert "must be an object" in out.data["hint"]
+    assert "Input should be a valid dictionary" in out.data["hint"] or "must be an object" in out.data["hint"]
+
+
+def test_limit_bounds_and_out_of_range_are_reported() -> None:
+    handle = _handle([_rec(i) for i in range(1, 6)])
+    tool = QueryRecordsTool()
+
+    lo = tool.run(ToolContext(source_handle=handle), limit=1)
+    hi = tool.run(ToolContext(source_handle=handle), limit=500)
+    bad = tool.run(ToolContext(source_handle=handle), limit=0)
+
+    assert lo.data["count"] == 1
+    assert hi.data["count"] == 5
+    assert "invalid arguments" in bad.data["hint"]
+
+
+def test_bad_fields_shape_is_reported_not_raised() -> None:
+    handle = _handle([_rec(1, a=1)])
+    tool = QueryRecordsTool()
+    out = tool.run(ToolContext(source_handle=handle), fields=[1, 2])  # type: ignore[list-item]
+    assert "invalid arguments" in out.data["hint"]

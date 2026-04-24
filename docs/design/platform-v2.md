@@ -1,8 +1,8 @@
 # TraceWeaver v2 平台架构设计
 
-**状态**：设计中，准备执行
-**基线模型**：`ollama/qwen3.5:9b`（要求稳定 tool calling）
-**目标交付时间**：约 7 周（M1–M5 分阶段）
+**状态**：持续迭代中（M1–M3 已完成，当前推进 M4）
+**基线模型**：`openai/qwen/qwen3.5-9b`（本地 LM Studio，要求稳定 tool calling）
+**目标交付时间**：M4–M7 按阶段推进
 
 ---
 

@@ -36,7 +36,7 @@ def test_window_returns_expected_neighbors() -> None:
 def test_missing_seq_arg_returns_hint() -> None:
     tool = GetRecordsAroundTool()
     out = tool.run(ToolContext(source_handle=_handle([1])))
-    assert "required" in out.data["hint"]
+    assert "required" in out.data["hint"].lower() or "invalid arguments" in out.data["hint"].lower()
 
 
 def test_window_on_empty_source_includes_hint() -> None:
@@ -54,3 +54,17 @@ def test_window_clamps_to_available_records() -> None:
         ToolContext(source_handle=handle), seq=2, before=100, after=100
     )
     assert [r["seq"] for r in out.data["records"]] == [1, 2, 3]
+
+
+def test_seq_not_found_uses_insertion_point_window() -> None:
+    handle = _handle([10, 20, 30, 40])
+    tool = GetRecordsAroundTool()
+    out = tool.run(ToolContext(source_handle=handle), seq=35, before=1, after=1)
+    assert [r["seq"] for r in out.data["records"]] == [30, 40]
+
+
+def test_negative_before_after_are_clamped_to_zero() -> None:
+    handle = _handle([1, 2, 3])
+    tool = GetRecordsAroundTool()
+    out = tool.run(ToolContext(source_handle=handle), seq=2, before=-9, after=-7)
+    assert [r["seq"] for r in out.data["records"]] == [2]

@@ -20,6 +20,7 @@ from traceweaver.core.intelligence.base import (
     IntelligenceRequest,
     IntelligenceResponse,
 )
+from traceweaver.core.protocols import ToolCall
 from traceweaver.core.source import Record
 
 
@@ -198,3 +199,108 @@ def test_json_output_mode(
     parsed = json.loads(out)
     assert parsed["stop_reason"] == "final"
     assert parsed["final_json"]["verdict"] == "ok"
+
+
+def test_analyze_loads_profile_tools(tmp_path: Path, monkeypatch, capsys) -> None:
+    from traceweaver.cli import analyze as cli_mod
+
+    root = tmp_path / "profiles" / "with_tool"
+    (root / "prompts").mkdir(parents=True)
+    (root / "knowledge").mkdir()
+    (root / "prompts" / "system.md").write_text("demo", encoding="utf-8")
+    (root / "knowledge" / "k.md").write_text("x", encoding="utf-8")
+    tools_dir = root / "tools"
+    tools_dir.mkdir()
+    (tools_dir / "__init__.py").write_text("", encoding="utf-8")
+    (tools_dir / "echo_tool.py").write_text(
+        "\n".join(
+            [
+                "from traceweaver.core.protocols import Tool, ToolContext, ToolResult, ToolSpec",
+                "",
+                "class LocalEchoTool(Tool):",
+                "    spec = ToolSpec(",
+                "        name='local_echo',",
+                "        description='local test tool',",
+                "        parameters_schema={",
+                "            'type': 'object',",
+                "            'properties': {'text': {'type': 'string'}},",
+                "            'required': ['text'],",
+                "        },",
+                "    )",
+                "",
+                "    def run(self, ctx: ToolContext, **kwargs):",
+                "        return ToolResult(data={'echo': kwargs.get('text', '')})",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (root / "profile.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "name": "with_tool",
+                "llm": {"system_prompt_file": "prompts/system.md"},
+                "knowledge": [{"file": "knowledge/k.md"}],
+                "source_config": {"fake": {}},
+                "tools": [
+                    {
+                        "module": "with_tool.tools.echo_tool",
+                        "class": "LocalEchoTool",
+                    }
+                ],
+                "enrichers": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(root.parent))
+
+    monkeypatch.setattr(
+        cli_mod,
+        "LLMIntelligence",
+        lambda **kw: _ScriptedIntelligence(
+            [
+                IntelligenceResponse(
+                    kind="tool_calls",
+                    assistant_content="need local tool",
+                    tool_calls=[
+                        ToolCall(
+                            id="call_1",
+                            name="local_echo",
+                            arguments={"text": "ok"},
+                        )
+                    ],
+                ),
+                _final_json({"summary": "done"}),
+            ]
+        ),
+    )
+
+    def _spec(profile, args):
+        from traceweaver.core.source import SourceSpec
+
+        return SourceSpec(
+            kind="fake",
+            uri="memory://local-tool",
+            options={"records_object": [Record(source="fake", timestamp=1.0, seq=1, fields={})]},
+        )
+
+    monkeypatch.setattr(cli_mod, "_build_source_spec", _spec)
+
+    from traceweaver.cli import main
+
+    rc = main(
+        [
+            "analyze",
+            "--profile",
+            str(root),
+            "--pcap",
+            "dummy.pcap",
+            "--format",
+            "json",
+            "q",
+        ]
+    )
+    parsed = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert parsed["stop_reason"] == "final"
+    assert parsed["tool_calls_total"] == 1

@@ -145,30 +145,50 @@ def _messages_to_openai(system_prompt: str, messages: list[Message]) -> list[dic
     out: list[dict] = [{"role": "system", "content": system_prompt}]
     for m in messages:
         if m.role == "assistant" and m.tool_calls:
+            rendered_calls: list[dict[str, Any]] = []
+            for tc in m.tool_calls:
+                if isinstance(tc, dict):
+                    tc_id = tc.get("id")
+                    fn = tc.get("function") or {}
+                    if isinstance(fn, dict):
+                        fn_name = fn.get("name")
+                        fn_args = fn.get("arguments")
+                    else:
+                        fn_name = getattr(fn, "name", None)
+                        fn_args = getattr(fn, "arguments", None)
+                else:
+                    tc_id = getattr(tc, "id", None)
+                    fn = getattr(tc, "function", None)
+                    if fn is not None:
+                        fn_name = getattr(fn, "name", None)
+                        fn_args = getattr(fn, "arguments", None)
+                    else:
+                        fn_name = getattr(tc, "name", None)
+                        fn_args = getattr(tc, "arguments_raw", None) or getattr(
+                            tc, "arguments", None
+                        )
+
+                if not tc_id:
+                    tc_id = f"call-{uuid.uuid4().hex[:10]}"
+                if not isinstance(fn_name, str) or not fn_name:
+                    continue
+
+                args_payload = (
+                    fn_args if isinstance(fn_args, str) else json.dumps(fn_args or {}, ensure_ascii=False)
+                )
+                rendered_calls.append(
+                    {
+                        "id": str(tc_id),
+                        "type": "function",
+                        "function": {"name": fn_name, "arguments": args_payload},
+                    }
+                )
+
             out.append(
                 {
                     "role": "assistant",
                     "content": m.content or "",
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.name,
-                                # Prefer the provider's verbatim argument
-                                # string so the chat template sees exactly
-                                # what the model originally produced.
-                                "arguments": (
-                                    tc.arguments_raw
-                                    if tc.arguments_raw is not None
-                                    else json.dumps(
-                                        tc.arguments, ensure_ascii=False
-                                    )
-                                ),
-                            },
-                        }
-                        for tc in m.tool_calls
-                    ],
+                    "tool_calls": rendered_calls,
                 }
             )
         elif m.role == "tool":
@@ -219,6 +239,38 @@ def _parse_arguments(raw: Any) -> dict[str, Any]:
             return {}
         return parsed if isinstance(parsed, dict) else {}
     return {}
+
+
+def _tc_get(tc: Any, key: str) -> Any:
+    """Read tool-call field from either dict or object."""
+    if isinstance(tc, dict):
+        return tc.get(key)
+    return getattr(tc, key, None)
+
+
+def _normalize_native_tool_call(tc: Any) -> ToolCall | None:
+    """
+    Normalize provider tool-call payloads to internal ToolCall.
+    Supports both object-style and dict-style responses.
+    """
+    fn = _tc_get(tc, "function") or {}
+    if isinstance(fn, dict):
+        name = fn.get("name")
+        raw_args = fn.get("arguments")
+    else:
+        name = getattr(fn, "name", None)
+        raw_args = getattr(fn, "arguments", None)
+
+    if not isinstance(name, str) or not name:
+        return None
+
+    call_id = _tc_get(tc, "id") or f"call-{uuid.uuid4().hex[:10]}"
+    return ToolCall(
+        id=str(call_id),
+        name=name,
+        arguments=_parse_arguments(raw_args),
+        arguments_raw=(raw_args if isinstance(raw_args, str) else None),
+    )
 
 
 # ---- Provider quirk matrix ------------------------------------------------
@@ -332,19 +384,11 @@ class LLMIntelligence(Intelligence):
             reasoning = f"{reasoning}\n{leaked_reasoning}" if reasoning else leaked_reasoning
         native_tool_calls = getattr(msg, "tool_calls", None) or []
 
-        tool_calls = [
-            ToolCall(
-                id=(getattr(tc, "id", None) or f"call-{uuid.uuid4().hex[:10]}"),
-                name=tc.function.name,
-                arguments=_parse_arguments(tc.function.arguments),
-                arguments_raw=(
-                    tc.function.arguments
-                    if isinstance(tc.function.arguments, str)
-                    else None
-                ),
-            )
-            for tc in native_tool_calls
-        ]
+        tool_calls: list[ToolCall] = []
+        for tc in native_tool_calls:
+            norm = _normalize_native_tool_call(tc)
+            if norm is not None:
+                tool_calls.append(norm)
 
         # Qwen native leak recovery: only when the provider gave us no
         # structured tool_calls. Honour precedence: content first, then

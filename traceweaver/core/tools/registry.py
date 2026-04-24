@@ -31,6 +31,9 @@ class ToolRegistry:
     def __iter__(self):
         return iter(self._tools.values())
 
+    def values(self) -> list[Tool]:
+        return list(self._tools.values())
+
     def get(self, name: str) -> Tool:
         if name not in self._tools:
             raise KeyError(f"unknown tool: {name}")

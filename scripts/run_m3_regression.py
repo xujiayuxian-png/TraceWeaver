@@ -57,7 +57,11 @@ from traceweaver.core.profile.runtime import (  # noqa: E402
 )
 from traceweaver.core.profile.yaml_loader import load_profile_from_dir  # noqa: E402
 from traceweaver.core.source import SourceSpec  # noqa: E402
-from traceweaver.core.tools.builtin import register_builtin_tools  # noqa: E402
+from traceweaver.builtin import (  # noqa: E402
+    register_builtin_sources,
+    register_builtin_tools,
+)
+from traceweaver.core.source.registry import SourceRegistry  # noqa: E402
 from traceweaver.core.tools.loader import load_profile_tools  # noqa: E402
 from traceweaver.core.tools.registry import ToolRegistry  # noqa: E402
 
@@ -113,6 +117,7 @@ def run_one(
     kernel: AgentKernel,
     profile,
     user_prompt: str,
+    source_registry: SourceRegistry,
 ) -> dict[str, Any]:
     t0 = time.perf_counter()
     entry: dict[str, Any] = {
@@ -121,7 +126,9 @@ def run_one(
     }
     try:
         handle = ingest_for_profile(
-            profile, _pcap_source_spec(profile, pcap_path)
+            profile,
+            _pcap_source_spec(profile, pcap_path),
+            registry=source_registry,
         )
     except Exception as exc:  # noqa: BLE001
         entry.update(
@@ -158,8 +165,8 @@ def run_one(
     entry.update(
         {
             "stop_reason": result.stop_reason,
-            "rounds_used": result.trace.rounds_used(),
-            "tool_calls_total": result.trace.tool_calls_total(),
+            "rounds_used": len(result.trace.events),
+            "tool_calls_total": len(_tool_calls(result)),
             "calls": _tool_calls(result),
             "final_json": result.final_json,
             "elapsed_s": round(time.perf_counter() - t0, 2),
@@ -212,6 +219,8 @@ def main() -> int:
         return 0
 
     profile = load_profile_from_dir(PROFILE_ROOT)
+    source_registry = SourceRegistry()
+    register_builtin_sources(source_registry)
     registry = ToolRegistry()
     register_builtin_tools(registry)
     load_profile_tools(registry, profile.tools)
@@ -220,7 +229,7 @@ def main() -> int:
         api_base=args.api_base,
         temperature=args.temperature,
     )
-    kernel = AgentKernel(intelligence=intelligence, registry=registry)
+    kernel = AgentKernel(intelligence=intelligence, tools=list(registry.values()))
 
     print(
         f"[M3-regression] model={args.model} api_base={args.api_base} "
@@ -236,7 +245,7 @@ def main() -> int:
     t_all = time.perf_counter()
     for idx, pcap_path in enumerate(pcaps, 1):
         print(f"\n[{idx}/{len(pcaps)}] {pcap_path.name}", flush=True)
-        entry = run_one(pcap_path, kernel, profile, args.user_prompt)
+        entry = run_one(pcap_path, kernel, profile, args.user_prompt, source_registry)
         entries.append(entry)
         if entry["ok"]:
             verdict = (entry.get("final_json") or {}).get("verdict")

@@ -1,42 +1,44 @@
 """query_records: filtered / projected / paginated scan of the source."""
 from __future__ import annotations
 from typing import Any
+from pydantic import BaseModel, Field
 from traceweaver.core.protocols import Tool, ToolContext, ToolResult, ToolSpec
 
 _DEFAULT_LIMIT = 50
 _MAX_LIMIT = 500
 
+
+class QueryRecordsArgs(BaseModel):
+    """Arguments for query_records tool."""
+    filter: dict[str, Any] | None = Field(
+        default=None, description="Flat dict of equality constraints"
+    )
+    fields: list[str] | None = Field(
+        default=None, description="Project fields to these keys"
+    )
+    limit: int = Field(
+        default=_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT, description="Max records (1-500)"
+    )
+
+
 class QueryRecordsTool(Tool):
-    spec = ToolSpec(
+    spec = ToolSpec.from_pydantic(
+        QueryRecordsArgs,
         name="query_records",
         description="Scan the loaded source for records matching an equality filter.",
-        parameters_schema={
-            "type": "object",
-            "properties": {
-                "filter": {"type": "object", "description": "Flat dict of equality constraints"},
-                "fields": {"type": "array", "items": {"type": "string"}, "description": "Project fields to these keys"},
-                "limit": {"type": "integer", "description": "Max records (1-500)", "minimum": 1, "maximum": _MAX_LIMIT},
-            },
-            "required": [],
-        },
     )
 
     def run(self, ctx: ToolContext, **kwargs: Any) -> ToolResult:
         if ctx.source_handle is None:
             return ToolResult(data={"records": [], "count": 0, "hint": "no source loaded"})
 
-        flt = kwargs.get("filter")
-        if flt is not None and not isinstance(flt, dict):
-            return ToolResult(data={"records": [], "count": 0, "hint": "filter must be an object"})
-        fields = kwargs.get("fields")
-        limit = kwargs.get("limit")
-        if limit is None:
-            limit = _DEFAULT_LIMIT
         try:
-            limit = int(limit)
-        except (TypeError, ValueError):
-            limit = _DEFAULT_LIMIT
-        limit = max(1, min(limit, _MAX_LIMIT))
+            args = QueryRecordsArgs.model_validate(kwargs)
+        except Exception as e:
+            return ToolResult(data={"records": [], "count": 0, "hint": f"invalid arguments: {e}"})
+        flt = args.filter
+        fields = args.fields
+        limit = args.limit
 
         collected: list[dict[str, Any]] = []
         refs: list[str] = []

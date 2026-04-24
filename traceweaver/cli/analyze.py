@@ -30,10 +30,11 @@ from traceweaver.core.kernel import AgentKernel, TaskSpec
 from traceweaver.core.protocols import ToolContext
 from traceweaver.core.profile import Profile, load_profile_from_dir
 from traceweaver.core.profile.loader import ProfileLoader
-from traceweaver.core.profile.runtime import build_knowledge_store
+from traceweaver.core.profile.runtime import build_knowledge_store, ingest_for_profile
 from traceweaver.core.source import SourceSpec
 from traceweaver.builtin import register_builtin_sources, register_builtin_tools
 from traceweaver.core.tools.registry import ToolRegistry
+from traceweaver.core.tools.loader import load_profile_tools
 from traceweaver.core.source.registry import SourceRegistry
 
 
@@ -89,7 +90,7 @@ def run(args: argparse.Namespace) -> int:
     source_reg = SourceRegistry()
     register_builtin_sources(source_reg)
     try:
-        handle = source_reg.build(source_spec)
+        handle = ingest_for_profile(profile, source_spec, registry=source_reg)
     except (FileNotFoundError, RuntimeError, ImportError) as exc:
         print(f"error: source ingest failed: {exc}", file=sys.stderr)
         return 3
@@ -99,11 +100,14 @@ def run(args: argparse.Namespace) -> int:
     # Tool registry with builtins + profile tools
     tool_reg = ToolRegistry()
     register_builtin_tools(tool_reg)
-    # TODO: load profile tools via import
-    # load_profile_tools(tool_reg, profile.tools)
+    try:
+        load_profile_tools(tool_reg, profile.tools)
+    except (ImportError, AttributeError, TypeError, ValueError) as exc:
+        print(f"error: profile tool loading failed: {exc}", file=sys.stderr)
+        return 2
 
     # Build tools list for kernel
-    tools = list(tool_reg._tools.values())
+    tools = list(tool_reg.values())
 
     intelligence = LLMIntelligence(model=args.model, api_base=args.api_base)
     kernel = AgentKernel(intelligence=intelligence, tools=tools)

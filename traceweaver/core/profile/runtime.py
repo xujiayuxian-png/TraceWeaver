@@ -19,10 +19,10 @@ import importlib
 from typing import Callable
 
 from traceweaver.core.protocols import KnowledgeStore, SourceHandle, SourceSpec
-from traceweaver.builtin.knowledge.file_store import FileKnowledgeStore
-from traceweaver.builtin.sources.enriched import EnrichedSourceHandle, Enricher
 from traceweaver.core.profile.base import Profile, ProfileEnricherSpec
 from traceweaver.core.source.registry import SourceRegistry
+
+Enricher = Callable
 
 
 def resolve_enrichers(specs: list[ProfileEnricherSpec]) -> list[Enricher]:
@@ -84,6 +84,8 @@ def wrap_handle_for_profile(
         chain.extend(extra_enrichers)
     if not chain:
         return handle
+    from traceweaver.builtin.sources.enriched import EnrichedSourceHandle
+
     return EnrichedSourceHandle(handle, chain)
 
 
@@ -94,6 +96,8 @@ def build_knowledge_store(profile: Profile) -> KnowledgeStore | None:
     """
     if not profile.knowledge:
         return None
+    from traceweaver.builtin.knowledge.file_store import FileKnowledgeStore
+
     return FileKnowledgeStore(items=list(profile.knowledge))
 
 

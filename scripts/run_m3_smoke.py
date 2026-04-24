@@ -41,7 +41,11 @@ from traceweaver.core.profile.runtime import (  # noqa: E402
 )
 from traceweaver.core.profile.yaml_loader import load_profile_from_dir  # noqa: E402
 from traceweaver.core.source import SourceSpec  # noqa: E402
-from traceweaver.core.tools.builtin import register_builtin_tools  # noqa: E402
+from traceweaver.builtin import (  # noqa: E402
+    register_builtin_sources,
+    register_builtin_tools,
+)
+from traceweaver.core.source.registry import SourceRegistry  # noqa: E402
 from traceweaver.core.tools.loader import load_profile_tools  # noqa: E402
 from traceweaver.core.tools.registry import ToolRegistry  # noqa: E402
 
@@ -330,6 +334,7 @@ def run_task(
     task: SmokeTask,
     kernel: AgentKernel,
     profile,
+    source_registry: SourceRegistry,
 ) -> tuple[bool, str, dict[str, Any]]:
     pcap_path = PCAP_DIR / task.pcap
     if not pcap_path.is_file():
@@ -341,7 +346,11 @@ def run_task(
 
     t0 = time.perf_counter()
     try:
-        handle = ingest_for_profile(profile, _pcap_source_spec(profile, pcap_path))
+        handle = ingest_for_profile(
+            profile,
+            _pcap_source_spec(profile, pcap_path),
+            registry=source_registry,
+        )
     except (FileNotFoundError, RuntimeError) as exc:
         return (
             False,
@@ -370,8 +379,8 @@ def run_task(
         "stop_reason": result.stop_reason,
         "final_json": result.final_json,
         "calls": _all_tool_calls(result),
-        "rounds_used": result.trace.rounds_used(),
-        "tool_calls_total": result.trace.tool_calls_total(),
+        "rounds_used": len(result.trace.events),
+        "tool_calls_total": len(_all_tool_calls(result)),
         "elapsed_s": round(time.perf_counter() - t0, 2),
         # P1.1 telemetry
         "total_tokens": result.total_tokens,
@@ -416,15 +425,18 @@ def main() -> int:
         return 2
 
     profile = load_profile_from_dir(PROFILE_ROOT)
+    source_registry = SourceRegistry()
+    register_builtin_sources(source_registry)
     registry = ToolRegistry()
     register_builtin_tools(registry)
     load_profile_tools(registry, profile.tools)
+    tools = list(registry.values())
     intelligence = LLMIntelligence(
         model=args.model,
         api_base=args.api_base,
         temperature=args.temperature,
     )
-    kernel = AgentKernel(intelligence=intelligence, registry=registry)
+    kernel = AgentKernel(intelligence=intelligence, tools=tools)
 
     tasks = build_tasks()
     if args.only:
@@ -442,7 +454,7 @@ def main() -> int:
     for task in tasks:
         print(f"\n[{task.name}] {task.description}", flush=True)
         print(f"  pcap: {task.pcap}", flush=True)
-        ok, reason, info = run_task(task, kernel, profile)
+        ok, reason, info = run_task(task, kernel, profile, source_registry)
         status = "PASS" if ok else "FAIL"
         # P1.1: surface telemetry inline so operators can see real cost.
         tokens = info.get("total_tokens")

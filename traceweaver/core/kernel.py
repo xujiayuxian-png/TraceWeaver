@@ -10,12 +10,11 @@ from traceweaver.core.protocols import (
     IntelligenceResponse,
     Message,
     Tool,
-    ToolCall,
     ToolContext,
 )
 from traceweaver.core.loop_engine import LoopEngine, LoopState
 from traceweaver.core.schema_guard import SchemaGuard
-from traceweaver.core.tool_dispatcher import ToolDispatcher
+from traceweaver.core.tools.registry import ToolRegistry
 from traceweaver.core.trace import AgentResult, AgentTrace, TraceEvent, ToolExecution
 
 
@@ -34,7 +33,8 @@ class AgentKernel:
         tools: list[Tool],
     ):
         self.intelligence = intelligence
-        self.dispatcher = ToolDispatcher(tools)
+        self.registry = ToolRegistry()
+        self.registry.register_all(tools)
         self.loop_engine = LoopEngine()
         self.schema_guard = SchemaGuard()
 
@@ -46,7 +46,7 @@ class AgentKernel:
     ) -> AgentResult:
         ctx = ctx or ToolContext()
         state = self.loop_engine.create_state(task, user_request)
-        tools_spec = [t.spec.to_openai_tool() for t in self.dispatcher.tool_list]
+        tools_spec = self.registry.specs()
 
         for round_idx in range(1, task.max_rounds + 1):
             # Budget warning
@@ -160,9 +160,48 @@ class AgentKernel:
             )
         )
 
-        executions = self.dispatcher.dispatch(
-            resp.tool_calls, ctx, task.forbid_tools, state.seen_calls
-        )
+        executions: list[ToolExecution] = []
+        for call in resp.tool_calls:
+            if call.name in task.forbid_tools:
+                executions.append(
+                    ToolExecution(
+                        call=call, ok=False, error=f"tool '{call.name}' is forbidden"
+                    )
+                )
+                continue
+
+            key = (
+                call.name,
+                json.dumps(call.arguments, ensure_ascii=False, sort_keys=True),
+            )
+            if key in state.seen_calls:
+                executions.append(
+                    ToolExecution(
+                        call=call,
+                        ok=False,
+                        error=f"duplicate_call: already executed in round {state.seen_calls[key]}",
+                    )
+                )
+                continue
+
+            state.seen_calls[key] = round_idx
+            try:
+                result = self.registry.invoke(call.name, call.arguments, ctx)
+                executions.append(
+                    ToolExecution(
+                        call=call,
+                        ok=True,
+                        data=result.data,
+                        refs=result.refs,
+                        truncated=result.truncated,
+                    )
+                )
+            except Exception as exc:
+                executions.append(
+                    ToolExecution(
+                        call=call, ok=False, error=f"{type(exc).__name__}: {exc}"
+                    )
+                )
 
         for ex in executions:
             content = self._render_execution(ex)

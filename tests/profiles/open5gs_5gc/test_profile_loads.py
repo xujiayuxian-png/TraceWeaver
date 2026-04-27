@@ -30,12 +30,27 @@ def test_all_declared_tools_load(profile) -> None:
     reg = ToolRegistry()
     names = load_profile_tools(reg, profile.tools)
     assert set(names) == {
+        "summarize_capture",
         "list_ue_sessions",
         "get_ue_timeline",
         "get_sbi_calls",
         "get_pfcp_exchanges",
         "get_nas_cause_meaning",
     }
+    assert names[0] == "summarize_capture"
+
+
+def test_prompt_required_tools_are_declared(profile) -> None:
+    reg = ToolRegistry()
+    names = set(load_profile_tools(reg, profile.tools))
+    assert "Your FIRST tool call MUST be `summarize_capture`" in profile.llm.system_prompt
+    assert "summarize_capture" in names
+
+
+def test_prompt_uses_hard_m3_contract_only(profile) -> None:
+    assert "likely_" not in profile.llm.system_prompt
+    assert "capture_findings" not in profile.llm.system_prompt
+    assert "verdict_guardrails" not in profile.llm.system_prompt
 
 
 def test_knowledge_files_exist(profile) -> None:

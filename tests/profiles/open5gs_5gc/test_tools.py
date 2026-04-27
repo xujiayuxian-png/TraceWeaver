@@ -14,6 +14,47 @@ from traceweaver.profiles.open5gs_5gc.tools.get_pfcp_exchanges import (
 from traceweaver.profiles.open5gs_5gc.tools.get_sbi_calls import GetSBICallsTool
 from traceweaver.profiles.open5gs_5gc.tools.get_ue_timeline import GetUETimelineTool
 from traceweaver.profiles.open5gs_5gc.tools.list_ue_sessions import ListUESessionsTool
+from traceweaver.profiles.open5gs_5gc.tools.summarize_capture import (
+    SummarizeCaptureTool,
+)
+
+
+# ---- summarize_capture -----------------------------------------------
+
+def test_summarize_capture_returns_prompt_contract_fields(enriched_handle) -> None:
+    handle = enriched_handle(
+        [
+            make_record(seq=1, ran="1", amf=None, mm_type=65),
+            make_record(seq=2, ran="1", amf="6", mm_type=66),
+            make_record(seq=3, ran="1", amf="6", sm_type=193),
+            make_record(seq=4, pfcp_msg_type=50),
+            make_record(
+                seq=5,
+                http2_method="POST",
+                http2_path="/nsmf-pdusession/v1/sm-contexts",
+                http2_streamid="1",
+                tcp_stream="2",
+            ),
+            make_record(
+                seq=6,
+                http2_status="400",
+                http2_streamid="1",
+                tcp_stream="2",
+            ),
+        ]
+    )
+    result = SummarizeCaptureTool().run(ToolContext(source_handle=handle))
+    data = result.data
+    assert set(data) == {"event_inventory", "ue_overview", "capture_signals"}
+    assert data["event_inventory"][0]["event"] == "REGISTRATION_REQUEST"
+    assert data["ue_overview"][0]["ran_ue_ngap_id"] == "1"
+    signals = data["capture_signals"]
+    assert signals["pdu_session_establishment_request_count"] == 1
+    assert signals["pfcp_session_establishment_request_count"] == 1
+    assert signals["has_pfcp_session_establishment_imbalance"] is True
+    assert signals["sbi_http_4xx_count"] == 1
+    assert "likely_pfcp_failure" not in signals
+    assert "likely_sbi_failure" not in signals
 
 
 # ---- list_ue_sessions -----------------------------------------------
@@ -107,7 +148,7 @@ def test_timeline_honors_limit(enriched_handle) -> None:
     assert result.data["count"] == 3
 
 
-def test_timeline_appends_teardown_finding(enriched_handle) -> None:
+def test_timeline_does_not_append_teardown_finding(enriched_handle) -> None:
     handle = enriched_handle(
         [
             make_record(seq=1, ran="1", amf="1", mm_type=65),
@@ -122,9 +163,7 @@ def test_timeline_appends_teardown_finding(enriched_handle) -> None:
         "REGISTRATION_REQUEST",
         "NGAP_PDU_SESSION_RESOURCE_SETUP",
         "NGAP_UE_CONTEXT_RELEASE",
-        "DEREGISTRATION_OR_SESSION_TEARDOWN",
     ]
-    assert result.data["events"][-1]["seq"] == 3
 
 
 def test_timeline_does_not_duplicate_explicit_deregistration(enriched_handle) -> None:
@@ -143,7 +182,7 @@ def test_timeline_does_not_duplicate_explicit_deregistration(enriched_handle) ->
     ]
 
 
-def test_timeline_appends_pdu_failure_hint_for_single_ue_capture(enriched_handle) -> None:
+def test_timeline_does_not_append_pdu_failure_hint_for_single_ue_capture(enriched_handle) -> None:
     handle = enriched_handle(
         [
             make_record(seq=1, ran="1", amf="1", mm_type=65),
@@ -163,8 +202,13 @@ def test_timeline_appends_pdu_failure_hint_for_single_ue_capture(enriched_handle
     result = GetUETimelineTool().run(
         ToolContext(source_handle=handle), ran_ue_ngap_id="1"
     )
-    assert result.data["events"][-1]["event"] == "PDU_SESSION_ESTABLISHMENT_REJECT_HINT"
-    assert result.data["events"][-1]["seq"] == 11
+    assert [e["event"] for e in result.data["events"]] == [
+        "REGISTRATION_REQUEST",
+        "NGAP_DOWNLINK_NAS_TRANSPORT",
+    ]
+    assert "PDU_SESSION_ESTABLISHMENT_REJECT_HINT" not in {
+        e["event"] for e in result.data["events"]
+    }
 
 
 # ---- get_sbi_calls --------------------------------------------------

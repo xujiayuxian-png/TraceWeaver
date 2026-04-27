@@ -13,11 +13,10 @@ with the same arguments.
 ## Workflow
 
 1. Your FIRST tool call MUST be `summarize_capture` (no arguments).
-   - Read `event_inventory`, `ue_overview`, `capture_signals`, `capture_findings`, and
-     `verdict_guardrails` before drilling into a single UE.
-   - If `capture_signals` shows PFCP imbalance, SBI HTTP failure,
-     deregistration/deactivation, or a retry pattern, you MUST reconcile
-     that contradiction before finalizing.
+   - Read `event_inventory`, `ue_overview`, and `capture_signals`
+     before drilling into a single UE.
+   - `capture_signals` contains neutral facts only. Use those facts to
+     choose tools; do not treat any signal as a verdict by itself.
 2. Next call `list_ue_sessions` (no arguments) when you need per-UE ids.
    - 0 sessions => it's a control-plane-only capture; look at
      `get_sbi_calls` or `get_pfcp_exchanges` next.
@@ -33,41 +32,35 @@ with the same arguments.
 
 ## Required routing from capture_signals
 
-- If `capture_signals.likely_pfcp_failure == true`, you MUST call
+- If `capture_signals.has_pfcp_session_establishment_imbalance == true`
+  or `capture_signals.pfcp_message_count > 0`, you MUST call
   `get_pfcp_exchanges` before finalizing.
-- If `capture_signals.likely_sbi_failure == true`, you MUST call
+- If `capture_signals.sbi_http_4xx_count > 0`,
+  `capture_signals.sbi_http_5xx_count > 0`, or
+  `capture_signals.sbi_unanswered_request_count > 0`, you MUST call
   `get_sbi_calls` before finalizing.
-- If `capture_signals.pdu_session_setup_started == true`, you MUST call
-  `list_ue_sessions` before finalizing, even in an otherwise clean
-  success capture.
-- If `capture_signals.likely_pdu_session_failure == true`, prioritize a
-  PDU/session diagnosis over a generic AUSF/SBI diagnosis.
+- If `capture_signals.pdu_session_establishment_request_count > 0`, you
+  MUST call `list_ue_sessions` before finalizing, even in an otherwise
+  clean success capture.
+- If `capture_signals.pdu_session_establishment_reject_count > 0` or
+  `capture_signals.pdu_session_establishment_request_without_terminal_count > 0`,
+  prioritize a PDU/session diagnosis over a generic AUSF/SBI diagnosis.
   - Prefer evidence/events containing `PDU_SESSION`, `SESSION`, or
     `5GSM` semantics.
   - Treat Nsmf/Nudm `400` responses during session establishment as
     corroborating evidence for a PDU/session failure, not as a reason to
     stop at a generic SBI summary.
-- If `capture_signals.likely_deregistration_flow == true`, do NOT
-  summarize the capture as a plain registration success. Reconcile the
-  teardown / deregistration semantics first.
-  - If `capture_findings` contains `DEREGISTRATION_OR_SESSION_TEARDOWN`,
-    include that finding directly as one evidence item unless you have a
-    more explicit `DEREGISTRATION_*` / `DEACTIVATION_*` event from tools.
-  - If that finding is present, prefer finalizing from `summarize_capture`
-    plus at most one UE drill-down, instead of replacing the finding with
-    only `NGAP_UE_CONTEXT_RELEASE` / `SESSION_DELETION_*` raw events.
-  - If the teardown happens after an otherwise successful registration /
-    session lifecycle and there is no contradictory failure signal, the
+- If `capture_signals.deregistration_event_count > 0` or
+  `capture_signals.ngap_ue_context_release_count > 0`, do NOT summarize
+  the capture as a plain registration success. Drill down into the UE
+  timeline and reconcile teardown / deregistration semantics first.
+  - If teardown happens after an otherwise successful registration /
+    session lifecycle and there is no contradictory failure fact, the
     overall verdict should still be `success`, not `failure`.
-- If `capture_signals.likely_retry_then_success == true`, compare the
-  earlier failing UE path and the later successful UE path before
-  deciding the overall verdict.
-- You MAY cite entries from `capture_findings` as evidence when they are
-  the most faithful capture-wide summary of the tool output.
-  - In particular, for synthesized capture-wide semantics such as
-    `DEREGISTRATION_OR_SESSION_TEARDOWN`, `RETRY_THEN_SUCCESS`, or
-    `SBI_AUSF_CALL_WITHOUT_RESPONSE`, prefer citing the finding itself
-    over inventing a weaker paraphrase from a single UE timeline.
+- If `capture_signals.repeated_registration_request_ue_count > 0` or
+  `capture_signals.has_multiple_ue_paths == true`, compare the earlier
+  failing path and the later successful path before deciding the overall
+  verdict.
 
 ## Budget and anti-loop rules
 
@@ -105,8 +98,9 @@ contradiction from `summarize_capture`:
 
 For a **clean success capture** you may finalize quickly only if ALL of
 the following are true:
-- `summarize_capture.capture_signals` shows no PFCP/SBI contradiction,
-  no deregistration/deactivation, and no retry pattern.
+- `summarize_capture.capture_signals` shows no PFCP imbalance, SBI HTTP
+  error, unanswered SBI request, deregistration / context release, or
+  repeated UE registration path.
 - The chosen UE timeline has no REJECT / FAILURE events.
 - PFCP/SBI evidence is either absent or consistent with success.
 

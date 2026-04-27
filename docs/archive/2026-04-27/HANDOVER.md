@@ -1,3 +1,14 @@
+> 📌 **此文档已于 2026-04-27 归档**。当前主路线图见 [`ROADMAP.md`](../../../ROADMAP.md)（项目根）。
+>
+> 本文档保留作为 M1-M3 落地的历史记录。其中关于 M4-M7 的计划（Extension/Log/CaseMemory/MCP）已被 ROADMAP §4 重排取代：
+> - 原 M4 Extension/分发 → ROADMAP M5'
+> - 原 M5 Log/多源 → **删除**（不进 builtin，详见 ROADMAP §3.5）
+> - 原 M7 MCP → ROADMAP M4'
+>
+> 当本文档与 ROADMAP 冲突时，以 ROADMAP 为准。
+
+---
+
 # TraceWeaver v2 跨机交接
 
 这是给**新机器上开新会话**的单点入口文档。目标：新 agent 读完本文件 + 本文件点到的 2–3 份核心文档后，不问额外问题就能接着干活。

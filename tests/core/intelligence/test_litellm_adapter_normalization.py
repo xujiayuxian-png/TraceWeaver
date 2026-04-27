@@ -19,12 +19,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from traceweaver.core.intelligence.base import IntelligenceRequest
 from traceweaver.core.intelligence.litellm_adapter import (
     LLMIntelligence,
     extract_leaked_tool_calls,
 )
-from traceweaver.core.types import Message
+from traceweaver.core.protocols import IntelligenceRequest, Message
 
 
 TOOLS_SPEC = [

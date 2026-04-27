@@ -1,10 +1,17 @@
 """`summarize_capture`: capture-wide factual summary."""
 from __future__ import annotations
-from collections import Counter
+from collections import Counter, deque
 from typing import Any
 from traceweaver.core.protocols import Tool, ToolContext, ToolResult, ToolSpec
 
-_MAX_UE_EVENTS = 50
+# Per-UE events list is split into a head (first N) + tail (last N) view so the
+# LLM can see both the start of the flow and any late events such as
+# DEREGISTRATION_REQUEST or PDU session teardown. If the total number of UE
+# events exceeds head + tail, the gap is reported via `events_truncated_count`
+# so the LLM knows there is more in the middle and can drill down with
+# `get_ue_timeline` if needed.
+_MAX_UE_EVENTS_HEAD = 25
+_MAX_UE_EVENTS_TAIL = 25
 
 
 def _http_status(raw: Any) -> int | None:
@@ -21,9 +28,13 @@ class SummarizeCaptureTool(Tool):
         name="summarize_capture",
         description=(
             "Return capture-wide factual inventory for the Open5GS 5GC "
-            "profile: event_inventory, ue_overview, and neutral "
-            "capture_signals. This tool does not produce verdicts, root "
-            "causes, or confidence."
+            "profile: event_inventory (every NAS/NGAP/PFCP event with "
+            "first/last seq), ue_overview (per-UE event list split into "
+            "events_head and events_tail, plus events_truncated_count for "
+            "the gap), and neutral capture_signals. Always inspect "
+            "events_tail before concluding success: late events such as "
+            "DEREGISTRATION_REQUEST or PDU teardown live there. This tool "
+            "does not produce verdicts, root causes, or confidence."
         ),
         parameters_schema={"type": "object", "properties": {}, "required": []},
     )
@@ -73,7 +84,8 @@ class SummarizeCaptureTool(Tool):
                         "last_seq": rec.seq,
                         "event_count": 0,
                         "event_counts": Counter(),
-                        "events": [],
+                        "events_head": [],
+                        "events_tail": deque(maxlen=_MAX_UE_EVENTS_TAIL),
                     },
                 )
                 if slot["ran_ue_ngap_id"] is None and ran is not None:
@@ -83,8 +95,10 @@ class SummarizeCaptureTool(Tool):
                 slot["last_seq"] = rec.seq
                 slot["event_count"] += 1
                 slot["event_counts"][ev] += 1
-                if len(slot["events"]) < _MAX_UE_EVENTS:
-                    slot["events"].append(ev)
+                if len(slot["events_head"]) < _MAX_UE_EVENTS_HEAD:
+                    slot["events_head"].append(ev)
+                else:
+                    slot["events_tail"].append(ev)
 
             pfcp_name = f.get("pfcp_msg_name")
             if pfcp_name:
@@ -114,18 +128,25 @@ class SummarizeCaptureTool(Tool):
             }
             for event in sorted(event_counts, key=lambda e: event_first_seq[e])
         ]
-        ue_overview = [
-            {
-                "ran_ue_ngap_id": slot["ran_ue_ngap_id"],
-                "amf_ue_ngap_id": slot["amf_ue_ngap_id"],
-                "first_seq": slot["first_seq"],
-                "last_seq": slot["last_seq"],
-                "event_count": slot["event_count"],
-                "event_counts": dict(slot["event_counts"]),
-                "events": slot["events"],
-            }
-            for slot in sorted(ue_slots.values(), key=lambda s: s["first_seq"])
-        ]
+        ue_overview = []
+        for slot in sorted(ue_slots.values(), key=lambda s: s["first_seq"]):
+            head = list(slot["events_head"])
+            tail = list(slot["events_tail"])
+            total = slot["event_count"]
+            truncated = max(0, total - len(head) - len(tail))
+            ue_overview.append(
+                {
+                    "ran_ue_ngap_id": slot["ran_ue_ngap_id"],
+                    "amf_ue_ngap_id": slot["amf_ue_ngap_id"],
+                    "first_seq": slot["first_seq"],
+                    "last_seq": slot["last_seq"],
+                    "event_count": total,
+                    "event_counts": dict(slot["event_counts"]),
+                    "events_head": head,
+                    "events_tail": tail,
+                    "events_truncated_count": truncated,
+                }
+            )
 
         sbi_http_request_count = sum(1 for c in sbi_calls.values() if c["method"])
         sbi_http_response_count = sum(1 for c in sbi_calls.values() if c["status"] is not None)

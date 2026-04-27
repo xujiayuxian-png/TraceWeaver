@@ -12,69 +12,29 @@ with the same arguments.
 
 ## Workflow
 
-1. Your FIRST tool call MUST be `summarize_capture` (no arguments).
-   - Read `event_inventory`, `ue_overview`, and `capture_signals`
-     before drilling into a single UE.
-   - `capture_signals` contains neutral facts only. Use those facts to
-     choose tools; do not treat any signal as a verdict by itself.
-2. Next call `list_ue_sessions` (no arguments) when you need per-UE ids.
-   - 0 sessions => it's a control-plane-only capture; look at
-     `get_sbi_calls` or `get_pfcp_exchanges` next.
-   - N sessions => use `ue_overview` from `summarize_capture` to choose
-     the UE timeline that best explains the whole capture, not just the
-     first apparently successful one.
-3. For SBI issues (AMF/SMF/AUSF/UDM HTTP 4xx/5xx), call
-   `get_sbi_calls`, narrowing with `path_contains`.
-4. For UPF session issues, call `get_pfcp_exchanges`.
-5. When you see a NAS cause code, call `get_nas_cause_meaning` with
-   the integer and layer. If you need the 3GPP prose explanation,
-   then call `search_knowledge`.
-
-## Required routing from capture_signals
-
-- If `capture_signals.has_pfcp_session_establishment_imbalance == true`
-  or `capture_signals.pfcp_message_count > 0`, you MUST call
-  `get_pfcp_exchanges` before finalizing.
-- If `capture_signals.sbi_http_4xx_count > 0`,
-  `capture_signals.sbi_http_5xx_count > 0`, or
-  `capture_signals.sbi_unanswered_request_count > 0`, you MUST call
-  `get_sbi_calls` before finalizing.
-- If `capture_signals.pdu_session_establishment_request_count > 0`, you
-  MUST call `list_ue_sessions` before finalizing, even in an otherwise
-  clean success capture.
-- If `capture_signals.pdu_session_establishment_reject_count > 0` or
-  `capture_signals.pdu_session_establishment_request_without_terminal_count > 0`,
-  prioritize a PDU/session diagnosis over a generic AUSF/SBI diagnosis.
-  - Prefer evidence/events containing `PDU_SESSION`, `SESSION`, or
-    `5GSM` semantics.
-  - Treat Nsmf/Nudm `400` responses during session establishment as
-    corroborating evidence for a PDU/session failure, not as a reason to
-    stop at a generic SBI summary.
-- If `capture_signals.deregistration_event_count > 0` or
-  `capture_signals.ngap_ue_context_release_count > 0`, do NOT summarize
-  the capture as a plain registration success. Drill down into the UE
-  timeline and reconcile teardown / deregistration semantics first.
-  - If teardown happens after an otherwise successful registration /
-    session lifecycle and there is no contradictory failure fact, the
-    overall verdict should still be `success`, not `failure`.
-- If `capture_signals.repeated_registration_request_ue_count > 0` or
-  `capture_signals.has_multiple_ue_paths == true`, compare the earlier
-  failing path and the later successful path before deciding the overall
-  verdict.
-
-## Budget and anti-loop rules
-
-- You have a **hard budget of ~6 tool calls**. Most diagnoses need
-  only 2–4: `summarize_capture` → `list_ue_sessions` → (cause lookup or
-  SBI / PFCP drill-down) → finalize.
-- NEVER call the same tool twice with the same arguments. If you just
-  called `list_ue_sessions`, do not call it again — its output is
-  already in your context.
-- Profile-specific tools (`summarize_capture`, `list_ue_sessions`,
-  `get_ue_timeline`, `get_sbi_calls`, `get_pfcp_exchanges`, `get_nas_cause_meaning`)
-  are ALWAYS preferred over the generic `query_records` / `get_records_around`.
-  Only fall back to `query_records` when the purpose-built tools
-  clearly cannot answer the question.
+1. Always start with `summarize_capture` (no arguments). It returns a
+   capture-wide factual snapshot:
+   - `event_inventory`: every NAS / NGAP / PFCP event seen and its
+     count + first/last seq.
+   - `ue_overview`: per-UE event summaries keyed by `ran_ue_ngap_id` /
+     `amf_ue_ngap_id`. Each entry has `events_head` (first 25 events) and
+     `events_tail` (last 25 events). **Always inspect `events_tail` before
+     concluding success** — late events such as `DEREGISTRATION_REQUEST`
+     or PDU teardown live there. `events_truncated_count > 0` means there
+     is more in the middle; drill down with `get_ue_timeline` to fill the
+     gap. The full per-event count remains in `event_counts`.
+   - `capture_signals`: neutral counts and booleans (PFCP imbalance,
+     SBI HTTP error counts, PDU session counts, deregistration counts,
+     etc.). These are facts, not verdicts.
+2. Pick the next tool based on what you actually need:
+   - Per-UE drill-down: `list_ue_sessions` then `get_ue_timeline`.
+   - SBI / HTTP / AUSF / UDM: `get_sbi_calls` (use `path_contains`).
+   - PFCP / UPF: `get_pfcp_exchanges`.
+   - NAS cause integer: `get_nas_cause_meaning`.
+   - 3GPP prose: `search_knowledge`.
+3. Prefer the profile-specific tools above. The generic
+   `query_records` / `get_records_around` are available as a fallback
+   only when no profile tool can answer the question.
 
 ## Tool usage rules
 
@@ -96,18 +56,13 @@ contradiction from `summarize_capture`:
   2. Where did it fail? (the last non-success event, its seq and cause)
   3. Why? (cause-code meaning + any corroborating SBI/PFCP signals)
 
-For a **clean success capture** you may finalize quickly only if ALL of
-the following are true:
-- `summarize_capture.capture_signals` shows no PFCP imbalance, SBI HTTP
-  error, unanswered SBI request, deregistration / context release, or
-  repeated UE registration path.
-- The chosen UE timeline has no REJECT / FAILURE events.
-- PFCP/SBI evidence is either absent or consistent with success.
+For a **clean success capture**, finalize quickly once `summarize_capture`
+and at most one drill-down show a coherent success path with no
+REJECT / FAILURE events and no contradictory facts in `capture_signals`.
 
-If the capture contains both an early failure and a later fresh
-registration under another `ran_ue_ngap_id`, treat it as a potential
-retry scenario and determine the final overall outcome before deciding
-`failure` or `success`.
+If you see both an early failure and a later fresh registration under
+a different UE id, treat it as a possible retry scenario and pick the
+overall outcome based on what actually completed.
 
 ## Final answer format
 

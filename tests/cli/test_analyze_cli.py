@@ -15,12 +15,12 @@ from typing import Any
 import pytest
 import yaml
 
-from traceweaver.core.intelligence.base import (
+from traceweaver.core.protocols import (
     Intelligence,
     IntelligenceRequest,
     IntelligenceResponse,
+    ToolCall,
 )
-from traceweaver.core.protocols import ToolCall
 from traceweaver.core.source import Record
 
 

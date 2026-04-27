@@ -31,10 +31,20 @@
 
 请参考以下文档获取最新信息：
 
-- `docs/profiles/open5gs_5gc.md` - Open5GS 5GC Profile 完整文档
-- `docs/llm/README.md` - LLM 诊断测试结果
-- `experiments/README.md` - 实验脚本说明
+- **`ROADMAP.md`（项目根）** - 当前向前看的执行路线图（**首选**）
+- `docs/profiles/open5gs_5gc.md` - Open5GS 5GC Profile 完整文档（如存在）
+- `docs/llm/README.md` - LLM 诊断测试结果（如存在）
+- `experiments/README.md` - 实验脚本说明（如存在）
 
 ## 归档时间
 
-2026-04-17
+- 2026-04-17：v1 旧设计文档归档
+- **2026-04-27：M3 收敛之后归档** —— `2026-04-27/` 子目录
+
+## 2026-04-27 归档子目录
+
+| 文档 | 原用途 | 归档原因 |
+|------|--------|----------|
+| `2026-04-27/HANDOVER.md` | v2 跨机交接信，里程碑 M1-M7 编号 | M3 收敛完毕，M4-M7 路径被 `ROADMAP.md` §4 重排取代（log/多源不再做） |
+| `2026-04-27/REFACTOR_PLAN.md` | core/ 纯化重构计划（阶段 A-F） | 阶段 A/C 已落地；阶段 B/D/E/F 见 ROADMAP 持续改进与 M5'/M7' |
+| `2026-04-27/REFACTOR_PLAN_HARD.md` | REFACTOR_PLAN 的硬核版本 | 同上 |

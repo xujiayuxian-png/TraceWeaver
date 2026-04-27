@@ -1,6 +1,6 @@
 """Intelligence layer (platform-v2 §4 Layer 4)."""
 
-from traceweaver.core.intelligence.base import (
+from traceweaver.core.protocols import (
     Intelligence,
     IntelligenceRequest,
     IntelligenceResponse,

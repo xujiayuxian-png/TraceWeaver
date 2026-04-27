@@ -1,3 +1,11 @@
+> 📌 **此文档已于 2026-04-27 归档**。当前主路线图见 [`ROADMAP.md`](../../../ROADMAP.md)（项目根）。
+>
+> 与同目录 `REFACTOR_PLAN.md` 内容重叠，仅作为硬核版本保留。落地状态见 `REFACTOR_PLAN.md` 顶部说明。
+>
+> 当本文档与 ROADMAP 冲突时，以 ROADMAP 为准。
+
+---
+
 # TraceWeaver 硬核重构计划
 
 > 不兼容。不过渡。直接替换。

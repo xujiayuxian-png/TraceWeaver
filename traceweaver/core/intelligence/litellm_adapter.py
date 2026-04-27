@@ -39,12 +39,13 @@ from typing import Any
 
 from litellm import completion
 
-from traceweaver.core.intelligence.base import (
+from traceweaver.core.protocols import (
     Intelligence,
     IntelligenceRequest,
     IntelligenceResponse,
+    Message,
+    ToolCall,
 )
-from traceweaver.core.types import Message, ToolCall
 
 
 # ---- Qwen native tool-call normalization ---------------------------------
@@ -319,6 +320,19 @@ class LLMIntelligence(Intelligence):
     temperature:
         Sampling temperature. Defaults to 0.0 for deterministic
         diagnosis.
+    max_tokens:
+        Hard cap on the number of tokens the model is allowed to emit
+        in one turn. Defaults to 12288, which fits a final JSON plus
+        substantial reasoning while still bounding generation. Set
+        higher only if you have a verified need — unbounded generation
+        is the most common cause of "the model is stuck".
+    timeout:
+        Wall-clock timeout for a single LLM call, in seconds. Defaults
+        to 300s. Local CPU/GPU inference on a 9B model can comfortably
+        need 60-180s per turn with a non-trivial context, so the
+        default is set high enough not to interrupt healthy turns while
+        still catching a truly wedged model. The kernel treats a
+        timeout as ``intelligence_error`` and stops the run.
     extra_completion_kwargs:
         Escape hatch for callers that need to pass exotic litellm
         params. Merged on top of provider-derived kwargs.
@@ -329,6 +343,8 @@ class LLMIntelligence(Intelligence):
         model: str,
         api_base: str | None = None,
         temperature: float = 0.0,
+        max_tokens: int = 12288,
+        timeout: float = 300.0,
         extra_completion_kwargs: dict[str, Any] | None = None,
     ) -> None:
         self.model = model
@@ -338,6 +354,8 @@ class LLMIntelligence(Intelligence):
         self.temperature = (
             max(0.05, temperature) if "minimax" in model.lower() else temperature
         )
+        self.max_tokens = int(max_tokens)
+        self.timeout = float(timeout)
         self.name = f"LLMIntelligence[{model}]"
         self._extra = dict(extra_completion_kwargs or {})
 
@@ -348,6 +366,8 @@ class LLMIntelligence(Intelligence):
             "model": self.model,
             "messages": _messages_to_openai(request.system_prompt, request.messages),
             "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "timeout": self.timeout,
         }
         if request.tools:
             call_kwargs["tools"] = request.tools

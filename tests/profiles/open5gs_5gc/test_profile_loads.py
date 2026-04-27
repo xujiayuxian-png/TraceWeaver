@@ -43,8 +43,11 @@ def test_all_declared_tools_load(profile) -> None:
 def test_prompt_required_tools_are_declared(profile) -> None:
     reg = ToolRegistry()
     names = set(load_profile_tools(reg, profile.tools))
-    assert "Your FIRST tool call MUST be `summarize_capture`" in profile.llm.system_prompt
+    prompt = profile.llm.system_prompt
+    assert "summarize_capture" in prompt
     assert "summarize_capture" in names
+    workflow_section = prompt.split("## Workflow", 1)[-1].split("##", 1)[0]
+    assert "summarize_capture" in workflow_section
 
 
 def test_prompt_uses_hard_m3_contract_only(profile) -> None:

@@ -194,10 +194,10 @@ def _check_02_registration_and_pdu_success(result: AgentResult) -> tuple[bool, s
     fj = _final(result)
     if fj.get("verdict") != "success":
         return False, f"expected verdict=success, got {fj.get('verdict')!r}"
-    calls = _all_tool_calls(result)
-    # Should use PDU session related tools
-    if not any("pdu" in c.lower() or "session" in c.lower() for c in calls):
-        return False, f"expected PDU/session tool usage, got calls={calls}"
+    evidence = fj.get("evidence") or []
+    text = " ".join(str(e.get("event", "")).lower() for e in evidence)
+    if "pdu" not in text and "session" not in text and "5gsm" not in text:
+        return False, f"expected PDU/session evidence, got {evidence}"
     return True, "ok"
 
 
@@ -378,6 +378,7 @@ def run_task(
     info = {
         "stop_reason": result.stop_reason,
         "final_json": result.final_json,
+        "error": result.error,
         "calls": _all_tool_calls(result),
         "rounds_used": len(result.trace.events),
         "tool_calls_total": len(_all_tool_calls(result)),
@@ -510,6 +511,7 @@ def main() -> int:
         )
 
     if args.report is not None:
+        args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(
             json.dumps(summary, ensure_ascii=False, indent=2, default=str),
             encoding="utf-8",

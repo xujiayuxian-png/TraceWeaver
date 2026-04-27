@@ -47,7 +47,11 @@ def test_summarize_capture_returns_prompt_contract_fields(enriched_handle) -> No
     data = result.data
     assert set(data) == {"event_inventory", "ue_overview", "capture_signals"}
     assert data["event_inventory"][0]["event"] == "REGISTRATION_REQUEST"
-    assert data["ue_overview"][0]["ran_ue_ngap_id"] == "1"
+    ue = data["ue_overview"][0]
+    assert ue["ran_ue_ngap_id"] == "1"
+    # New events_head / events_tail / events_truncated_count contract.
+    assert set(ue) >= {"events_head", "events_tail", "events_truncated_count"}
+    assert ue["events_truncated_count"] == 0
     signals = data["capture_signals"]
     assert signals["pdu_session_establishment_request_count"] == 1
     assert signals["pfcp_session_establishment_request_count"] == 1
@@ -55,6 +59,52 @@ def test_summarize_capture_returns_prompt_contract_fields(enriched_handle) -> No
     assert signals["sbi_http_4xx_count"] == 1
     assert "likely_pfcp_failure" not in signals
     assert "likely_sbi_failure" not in signals
+
+
+def test_summarize_capture_events_tail_preserves_late_deregistration(
+    enriched_handle,
+) -> None:
+    """BUG-1 regression: a UE with > 50 events must still surface the final
+    DEREGISTRATION_REQUEST so the LLM is not blind to capture tails."""
+    records = [
+        make_record(seq=i, ran="1", amf="6", mm_type=65) for i in range(1, 51)
+    ]
+    records.append(make_record(seq=51, ran="1", amf="6", mm_type=69))
+
+    handle = enriched_handle(records)
+    result = SummarizeCaptureTool().run(ToolContext(source_handle=handle))
+    ue = result.data["ue_overview"][0]
+
+    assert ue["event_count"] == 51
+    assert len(ue["events_head"]) == 25
+    assert all(e == "REGISTRATION_REQUEST" for e in ue["events_head"])
+    assert len(ue["events_tail"]) == 25
+    assert ue["events_tail"][-1] == "DEREGISTRATION_REQUEST_UE_ORIG"
+    # head(25) + tail(25) covers only 50 of the 51 events; one slipped through
+    # the gap and must be reported via events_truncated_count.
+    assert ue["events_truncated_count"] == 1
+    # The full DEREGISTRATION_REQUEST_UE_ORIG count remains accurate.
+    assert ue["event_counts"]["DEREGISTRATION_REQUEST_UE_ORIG"] == 1
+
+
+def test_summarize_capture_short_capture_has_empty_tail(enriched_handle) -> None:
+    """When total events <= head limit, all events live in events_head."""
+    records = [
+        make_record(seq=1, ran="1", amf=None, mm_type=65),
+        make_record(seq=2, ran="1", amf="6", mm_type=86),
+        make_record(seq=3, ran="1", amf="6", mm_type=87),
+    ]
+    handle = enriched_handle(records)
+    result = SummarizeCaptureTool().run(ToolContext(source_handle=handle))
+    ue = result.data["ue_overview"][0]
+    assert ue["event_count"] == 3
+    assert ue["events_head"] == [
+        "REGISTRATION_REQUEST",
+        "AUTHENTICATION_REQUEST",
+        "AUTHENTICATION_RESPONSE",
+    ]
+    assert ue["events_tail"] == []
+    assert ue["events_truncated_count"] == 0
 
 
 # ---- list_ue_sessions -----------------------------------------------

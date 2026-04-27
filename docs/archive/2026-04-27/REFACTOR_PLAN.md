@@ -1,3 +1,17 @@
+> 📌 **此文档已于 2026-04-27 归档**。当前主路线图见 [`ROADMAP.md`](../../../ROADMAP.md)（项目根）。
+>
+> **落地状态**：
+> - ✅ 阶段 A（纯化 core/，迁出 PcapSource/FileKnowledgeStore/builtin tools 到 `builtin/`）已完成
+> - ✅ 阶段 C（删除 `summarize_capture` 的 `likely_*` 与 `verdict_guardrails`）已完成
+> - ❌ 阶段 B（ToolSpec 自动从 Pydantic 生成）未做，见 ROADMAP 持续改进项
+> - ❌ 阶段 D（Record-Replay 系统）未做，见 ROADMAP M7'
+> - ❌ 阶段 E（Profile 贡献点机制）的部分内容已被 ROADMAP M5'（entry_points）取代
+> - ❌ 阶段 F（Kernel 拆分）未做，且暂不在 ROADMAP 中——当前 kernel 体量可控
+>
+> 当本文档与 ROADMAP 冲突时，以 ROADMAP 为准。
+
+---
+
 # TraceWeaver 重构计划 v1.0
 
 > 基于架构审视结果，针对 core/ 边界失守、工具 schema 硬编码、smoke 测试外部依赖等问题的完整修改路线图。

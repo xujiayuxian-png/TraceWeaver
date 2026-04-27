@@ -64,6 +64,18 @@ class ToolSpec(BaseModel):
             },
         }
 
+    def to_mcp_tool(self) -> dict[str, Any]:
+        """
+        Render the spec as an MCP `tool` entry (name + description +
+        inputSchema). Mirrors `to_openai_tool()` but for the Model
+        Context Protocol surface used by `traceweaver.serve.mcp`.
+        """
+        return {
+            "name": self.name,
+            "description": self.description,
+            "inputSchema": self.parameters_schema or {"type": "object", "properties": {}},
+        }
+
     @classmethod
     def from_pydantic(cls, model: type[BaseModel], name: str, description: str) -> "ToolSpec":
         schema = model.model_json_schema()

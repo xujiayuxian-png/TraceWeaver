@@ -126,34 +126,41 @@
 | F0.3 | qwen3-14b + MiniMax-M2.7 双 baseline | ✅ 完成：14b Q6 7/9（`@d:\code\TraceWeaver\reports\baseline_qwen14b_v2.json`），MiniMax-M2.7 **9/9**（`@d:\code\TraceWeaver\reports\baseline_minimax_m27.json`） |
 | F0.4 | NAS 解密配置（`nas-5gs.null_decipher:TRUE` 写入 `profile.yaml.source_config.pcap.tshark_options`） | ✅ 完成，使 `REGISTRATION_ACCEPT` 等嵌套 NAS PDU 对 LLM 可见 |
 
-### M4' — MCP serve（约 2-3 天）
+### M4' — MCP serve（MVP 已完成 ✅ / HTTP 推 v0.2）
 
-> **这是从"单 profile 脚手架"升级成"可被外部 agent 调用的子系统"的核心**。
-> 接口零破坏，做完立刻有外部价值。
+> **从"单 profile 脚手架"升级成"可被外部 agent 调用的子系统"的核心**。
+> MVP 接口零破坏，做完立刻有外部价值。
 
-#### 交付物
+#### 交付物（已落地）
 
 ```
 traceweaver/
-├── serve/
-│   ├── __init__.py
-│   ├── mcp.py                 # ToolRegistry → MCP server 适配
-│   └── http.py                # 可选 FastAPI 兜底（同样接口）
+├── serve/                       # ✅ MVP 已完成
+│   ├── __init__.py              # build_serve_context / build_mcp_server / run_stdio
+│   ├── runtime.py               # ServeContext: profile + ingest + enrich + tool_registry
+│   └── mcp.py                   # ToolRegistry → MCP Server、list_tools / call_tool handler
 └── cli/
-    └── serve.py               # `traceweaver serve --transport stdio|sse|http`
+    └── serve.py                 # `traceweaver serve --transport stdio` （已注册到 cli/__init__.py）
 ```
 
-#### 关键设计点
+#### 实现重点（已落地）
 
-- 每个 `Tool` 的 `ToolSpec.to_openai_tool()` 已经接近 MCP `tool` 定义；适配代码 < 100 行
-- 启动时同样走 `profile + ingest + enrich`，但**不进入 kernel 循环**——MCP 只暴露原始工具，循环交给外部 agent
-- `pyproject.toml.optional-dependencies.mcp-server` 真接代码
+- 加了 `ToolSpec.to_mcp_tool()` 输出 MCP-原生 `name + description + inputSchema` 格式
+- `ServeContext` 复用 `ingest_for_profile` + `build_knowledge_store` + `register_builtin_tools` + `load_profile_tools`，不重复 kernel/CLI 逻辑
+- `build_mcp_server` 用 `mcp.server.lowlevel.Server`、`@server.list_tools()` + `@server.call_tool()` 装饰器跳转到 `ToolRegistry.invoke(...)`
+- ToolResult 统一包为 `{"data", "refs?", "truncated?"}` JSON 字符串放入 `TextContent`
+- 异常转为 `isError=True` + JSON `{"error": "..."}` 负载，不抹去原型信息
+- **依赖**：`pyproject.toml.optional-dependencies.mcp-server = ["mcp>=1.0"]`，安装后才可用
+- **capture 绑定模式**：启动时绑（方案 A）——一个 server = 一个 capture
 
-#### 验收
+#### 验收状态
 
-- [ ] Claude Desktop 配置 `traceweaver serve --transport stdio`，能列出 7 个工具
-- [ ] 外部 agent 调用 `summarize_capture` 返回与本地一致的 JSON
-- [ ] `traceweaver serve --transport sse` HTTP 模式能被 curl 调用
+- [x] 单元测试 8/8：list_tools / call_tool / 错误路径 / `to_mcp_tool` 字段 ✅
+- [x] E2E 内存测试 1/1：`create_connected_server_and_client_session` 完整握手路径 ✅
+- [x] 真实 stdio 子进程 smoke（`scripts/smoke_mcp_serve.py`）：9 个工具被正确暴露、`summarize_capture` 返回 1 UE / 8 events，与 `analyze` 一致 ✅
+- [x] 全套件 240 passed（8 个新 mcp 测试 + 原 232） ✅
+- [ ] **Claude Desktop 手动验证**（交给用户：配 `mcp_config.json` 后从 UI 调用工具）
+- [ ] HTTP/SSE transport —— **推 v0.2**，当前 MVP 不作为验收项（与 Cascade / Cursor / Claude Desktop 集成只需 stdio，http 是远程部署场景）
 
 ### M5' — Profile entry_points 分发（约 1 天）
 
@@ -266,11 +273,14 @@ profiles_external/sip_voip/         # 作为外部 profile 包，验证 M5' entr
 - [x] **F0.3** 14b + MiniMax-M2.7 双 baseline ✅
 - [x] **F0.4** NAS 解密配置 ✅
 
-- [ ] **M4' Kickoff**：动手前先调研 `mcp` Python SDK 的最小可运行示例，确认 stdio / sse 两种 transport 都能跑通，再开始包装 `ToolRegistry`
+- [x] **M4' MVP（stdio）✅**：`traceweaver serve --profile <name> --pcap <path>` 已可以被任何 MCP 客户端消费；http/sse 推 v0.2
+- [x] **M4' 接入文档 ✅**：`docs/guides/mcp-serve.md` 覆盖 Claude Desktop / Cursor / Cline 配置样例 + tshark PATH + 错误排查
+- [ ] **M4' 手动验证**：按 `docs/guides/mcp-serve.md` 在 Claude Desktop / Cursor / Cline 等 MCP 客户端中配置一个实例，验证 9 个工具能被外部 agent 发现并调用
+- [ ] **M5' Kickoff**：profile entry_points 分发（`pyproject.toml.[project.entry-points."traceweaver.profiles"]` + `core/profile/loader.py` 双路扫描）
 
-**M3 收救完毕（2026-04-27）**；现在可以直接进入 M4'。
+**M3 收救完毕（2026-04-27）**；**M4' MVP 已落地（20分钟）**；接下来主线是 M5' 。
 
-**M4'-M6' 总计 6-9 天可完成**——届时项目从"单 profile 脚手架"真正升级成
+**M5'-M6' 总计 4-6 天可完成**——届时项目从"单 profile 脚手架"真正升级成
 "可被外部 agent 调用、协议无关、第三方可分发的诊断平台"。
 
 ---

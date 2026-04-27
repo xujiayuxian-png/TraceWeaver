@@ -14,6 +14,9 @@ source_config:
     display_filter: "ngap || nas-5gs || http2 || pfcp"
     decode_as:
       - "tcp.port==7777,http2"
+    tshark_options:
+      - "-o"
+      - "nas-5gs.null_decipher:TRUE"
     fields:
       - "frame.protocols"
       - "ip.src"

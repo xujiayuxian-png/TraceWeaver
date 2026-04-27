@@ -203,6 +203,7 @@ class PcapSource(Source):
         key_strategy: dict[str, Any] | None = opts.get("key_strategy")
         separator = opts.get("field_separator", "\t")
         max_records: int | None = opts.get("max_records")
+        tshark_options: list[str] = list(opts.get("tshark_options", []))
         time_range: tuple[float, float] | None = opts.get("time_range")
 
         if self._run is _default_tshark_runner and not Path(uri).exists():
@@ -212,11 +213,15 @@ class PcapSource(Source):
             "tshark",
             "-r", uri,
             "-n",
+        ]
+        for opt in tshark_options:
+            argv.append(opt)
+        argv.extend([
             "-T", "fields",
             "-E", "header=y",
             "-E", f"separator={separator}",
             "-E", "occurrence=f",
-        ]
+        ])
         if display_filter:
             argv += ["-Y", display_filter]
         for da in decode_as:

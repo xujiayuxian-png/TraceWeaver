@@ -35,10 +35,12 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     from traceweaver.cli.analyze import register as register_analyze
+    from traceweaver.cli.profile import register as register_profile
     from traceweaver.cli.serve import register as register_serve
     from traceweaver.cli.validate_profile import register as register_validate
 
     register_analyze(sub)
+    register_profile(sub)
     register_serve(sub)
     register_validate(sub)
 

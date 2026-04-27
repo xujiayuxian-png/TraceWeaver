@@ -18,7 +18,6 @@ stderr; the full trace goes to stderr only when `--verbose` is set.
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 import sys
 from pathlib import Path
@@ -147,37 +146,22 @@ def _resolve_profile(name_or_path: str) -> Profile:
     """
     Resolve a profile identifier:
       * an absolute/relative filesystem path to a profile dir, OR
-      * a name matching a built-in profile (``traceweaver.profiles.<name>``), OR
-      * a name discoverable by `ProfileLoader`.
+      * a profile name discoverable by `ProfileLoader` (entry_points,
+        built-in namespace, or local search dirs — see
+        `traceweaver.core.profile.loader`).
     """
     candidate = Path(name_or_path)
     if candidate.exists() and (candidate / "profile.yaml").is_file():
         return load_profile_from_dir(candidate)
-
-    builtin = _builtin_profile_path(name_or_path)
-    if builtin is not None and (builtin / "profile.yaml").is_file():
-        return load_profile_from_dir(builtin)
 
     loader = ProfileLoader()
     try:
         return loader.load(name_or_path)
     except KeyError:
         raise FileNotFoundError(
-            "not found as path, built-in, or on TRACEWEAVER_PROFILES_PATH"
+            "not found as filesystem path, entry_point, built-in, or on "
+            "TRACEWEAVER_PROFILES_PATH"
         ) from None
-
-
-def _builtin_profile_path(name: str) -> Path | None:
-    """Try to resolve `traceweaver.profiles.<name>` to its package dir."""
-    mod_name = f"traceweaver.profiles.{name}"
-    try:
-        mod = importlib.import_module(mod_name)
-    except ImportError:
-        return None
-    mod_file = getattr(mod, "__file__", None)
-    if mod_file is None:
-        return None
-    return Path(mod_file).resolve().parent
 
 
 def _build_source_spec(profile: Profile, args: argparse.Namespace) -> SourceSpec:

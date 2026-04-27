@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tw-test-external-profile"
+version = "0.0.1"
+description = "Throw-away fixture profile used to exercise TraceWeaver's entry_points discovery path."
+requires-python = ">=3.11"
+
+# A real third-party package would put `traceweaver` here; for the
+# in-tree fixture we install it editable alongside the main package, so
+# the dependency is implicit and not needed at build time.
+dependencies = []
+
+# This is the line under test: it is exactly what
+# docs/guides/python-packaging-profiles.md tells third-party authors
+# to write.
+[project.entry-points."traceweaver.profiles"]
+tw_test_external = "tw_test_external_profile:profile.yaml"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tw_test_external_profile"]
+
+# Non-.py files are not packaged by default; the documented incantation
+# from python-packaging-profiles.md §3 is to force-include them.
+[tool.hatch.build.targets.wheel.force-include]
+"src/tw_test_external_profile/profile.yaml" = "tw_test_external_profile/profile.yaml"
+"src/tw_test_external_profile/prompts" = "tw_test_external_profile/prompts"

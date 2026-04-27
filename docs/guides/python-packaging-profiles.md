@@ -127,8 +127,13 @@ pip install -e .
 
 # 验证 TraceWeaver 能发现
 traceweaver profile list
-# 应该能看到 sip
+# 应该能看到 sip，origin 列显示 entry_point
 ```
+
+> **范例 + smoke 脚本**：仓库里 `tests/fixtures/external_profile_pkg/` 是一个完整可装的最小
+> profile 包，可以直接照抄目录结构。`scripts/smoke_external_profile.py` 把
+> "pip install + profile list 验证 + ProfileLoader.load() + pip uninstall" 串成一个端到端验证脚本，
+> 你 fork 一份，改成自己的包名跑一遍就能确认整条链路 OK。
 
 如果 `traceweaver profile list` 没看到，99% 的原因是 `entry_points` 写错了，或者
 `profile.yaml` 没被打包进去。排查顺序：
@@ -231,9 +236,19 @@ twine upload --repository-url https://pypi.your-company.com/ dist/*
 
 ### 7.3 不搞包分发，直接目录拷贝
 
-TraceWeaver 支持 `~/.traceweaver/profiles/` 目录扫描（**选项 B，M1 优先实现**）。
+TraceWeaver 支持 `~/.traceweaver/profiles/` 目录扫描（**已实现**）。
 把整个 profile 目录拷到用户的 `~/.traceweaver/profiles/sip/` 就能用，**完全不需要
 pip 包**。对只在团队内部分享来说，这种方式反而更简单。
+
+发现优先级（高 → 低）：
+
+1. `entry_points`（pip 包注册的）
+2. 仓库内置的 `traceweaver.profiles.<name>`
+3. `$TRACEWEAVER_PROFILES_PATH` 列出的目录
+4. `~/.traceweaver/profiles/`
+
+同名时上面优先；如果 entry_points 覆盖了内置 profile，启动时会有一行 stderr 警告
+（设 `TRACEWEAVER_QUIET_PROFILE_OVERRIDE=1` 可静默）。
 
 ---
 

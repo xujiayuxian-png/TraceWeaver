@@ -162,18 +162,29 @@ traceweaver/
 - [ ] **Claude Desktop 手动验证**（交给用户：配 `mcp_config.json` 后从 UI 调用工具）
 - [ ] HTTP/SSE transport —— **推 v0.2**，当前 MVP 不作为验收项（与 Cascade / Cursor / Claude Desktop 集成只需 stdio，http 是远程部署场景）
 
-### M5' — Profile entry_points 分发（约 1 天）
+### M5' — Profile entry_points 分发 ✅（已落地，2026-04-28）
 
-> 即原 HANDOVER M4，与 MCP 配套——MCP 暴露的工具是哪个 profile 提供的，由用户安装哪个 profile 包决定。
+> 与 MCP 配套——MCP 暴露的工具是哪个 profile 提供的，由用户安装哪个 profile 包决定。
 
-- `pyproject.toml` 加 `[project.entry-points."traceweaver.profiles"]`
-- `core/profile/loader.py` 同时扫描"目录 + 已安装 distribution"两路
-- `tests/fixtures/external_profile_pkg/` 写一份样例外部 profile 包，证明真的可装可发现
+#### 实际产出
 
-#### 验收
+- `core/profile/loader.py` 三源整合：entry_points → builtin namespace → local dirs，first-wins，覆盖 builtin 时 stderr 警告，可用 `TRACEWEAVER_QUIET_PROFILE_OVERRIDE=1` 静默
+- `cli/profile.py` 新增 `traceweaver profile list [--format json|text]`，列出每个 profile 的来源
+- `cli/__main__.py` 加上，让 `python -m traceweaver.cli` 也能用（CI / smoke 友好）
+- `cli/analyze.py` 简化：`_resolve_profile` 不再独立做 builtin 探测，统一走 ProfileLoader
+- `tests/fixtures/external_profile_pkg/`：完整可装的最小 profile 包，作为第三方包样板
+- `scripts/smoke_external_profile.py`：端到端 smoke（pip install → profile list 验证 → ProfileLoader.load → pip uninstall）
+- `tests/core/profile/test_loader.py`：13 个测试覆盖 entry_points 发现 / 优先级 / 冲突警告 / 错误模块 / yaml 后缀语法
+- `tests/cli/test_profile_cli.py`：3 个测试覆盖 `profile list` text/json
+- `docs/guides/python-packaging-profiles.md` 更新：发现优先级 + 静默 env var + 引用 fixture 与 smoke 脚本
 
-- [ ] `pip install ./tests/fixtures/external_profile_pkg` 后，`traceweaver analyze --profile fake_profile ...` 能跑
-- [ ] 卸载后 profile 自动从列表消失
+#### 验收状态
+
+- [x] `pip install -e tests/fixtures/external_profile_pkg/` 后 `traceweaver profile list` 看到 `tw_test_external` 标记 `entry_point` ✅
+- [x] `ProfileLoader().load("tw_test_external")` 通过 ✅
+- [x] `pip uninstall tw-test-external-profile -y` 后 profile 从列表消失 ✅
+- [x] 优先级冲突时（同名 entry_point + builtin）entry_point 赢，stderr 一行警告 ✅
+- [x] 全套测试 `251 passed` 无回归（原 240 + 8 个 loader + 3 个 profile CLI） ✅
 
 ### M6' — 第二个 reference profile（约 3-5 天）
 
@@ -275,10 +286,11 @@ profiles_external/sip_voip/         # 作为外部 profile 包，验证 M5' entr
 
 - [x] **M4' MVP（stdio）✅**：`traceweaver serve --profile <name> --pcap <path>` 已可以被任何 MCP 客户端消费；http/sse 推 v0.2
 - [x] **M4' 接入文档 ✅**：`docs/guides/mcp-serve.md` 覆盖 Claude Desktop / Cursor / Cline 配置样例 + tshark PATH + 错误排查
-- [ ] **M4' 手动验证**：按 `docs/guides/mcp-serve.md` 在 Claude Desktop / Cursor / Cline 等 MCP 客户端中配置一个实例，验证 9 个工具能被外部 agent 发现并调用
-- [ ] **M5' Kickoff**：profile entry_points 分发（`pyproject.toml.[project.entry-points."traceweaver.profiles"]` + `core/profile/loader.py` 双路扫描）
+- [x] **M4' 手动验证 ✅**：用户已在 MCP 客户端中配置完成并调用过工具
+- [x] **M5' entry_points 分发 ✅**：三源 loader / `profile list` 命令 / 外部包 fixture / pip-install smoke 全跑通
+- [ ] **M6' 第二个 reference profile**：选定协议（用户倾向先做 web_l4l7_failures：DNS/TCP/TLS/WS）后启动
 
-**M3 收救完毕（2026-04-27）**；**M4' MVP 已落地（20分钟）**；接下来主线是 M5' 。
+**M3 收救完毕（2026-04-27）**；**M4' MVP 已落地（20分钟）**；**M5' entry_points 已落地（2026-04-28）**；接下来主线是 M6'（第二个 reference profile）。
 
 **M5'-M6' 总计 4-6 天可完成**——届时项目从"单 profile 脚手架"真正升级成
 "可被外部 agent 调用、协议无关、第三方可分发的诊断平台"。

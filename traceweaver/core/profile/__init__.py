@@ -13,7 +13,14 @@ The loader scans local directories so users can drop a profile into
 """
 
 from traceweaver.core.profile.base import Profile, ProfileLLMConfig, ProfileKnowledgeItem
-from traceweaver.core.profile.loader import ProfileLoader, find_profile_dirs
+from traceweaver.core.profile.loader import (
+    SOURCE_BUILTIN,
+    SOURCE_ENTRY_POINT,
+    SOURCE_LOCAL_DIR,
+    ProfileLoader,
+    ProfileSource,
+    find_profile_dirs,
+)
 from traceweaver.core.profile.yaml_loader import load_profile_from_dir
 
 __all__ = [
@@ -21,6 +28,10 @@ __all__ = [
     "ProfileKnowledgeItem",
     "ProfileLLMConfig",
     "ProfileLoader",
+    "ProfileSource",
+    "SOURCE_BUILTIN",
+    "SOURCE_ENTRY_POINT",
+    "SOURCE_LOCAL_DIR",
     "find_profile_dirs",
     "load_profile_from_dir",
 ]

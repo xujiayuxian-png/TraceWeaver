@@ -1,0 +1,58 @@
+# Test environment for the `web_l4l7_failures` profile.
+# See README.md for usage.
+#
+# Three services:
+#   dnsmasq   :  authoritative DNS for *.local; replies NXDOMAIN for
+#                anything in .local that we did not register.
+#   nginx     :  serves https://server.local (valid cert) on 443 and
+#                https://tls-broken.local (expired cert) on 4443.
+#   ws-flaky  :  echo websocket server that drops the TCP connection
+#                without sending a close frame after $WS_IDLE_KILL seconds.
+#
+# Static IPs are pinned so the capture scripts can use --resolve / --dns
+# without depending on docker-internal name resolution.
+
+name: web_l4l7
+
+services:
+  dnsmasq:
+    build:
+      context: ./dnsmasq
+    cap_add:
+      - NET_ADMIN
+    networks:
+      web_l4l7_net:
+        ipv4_address: 10.5.0.10
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: ./nginx
+    networks:
+      web_l4l7_net:
+        ipv4_address: 10.5.0.20
+    volumes:
+      # Publish the test CA cert into a shared volume so the client
+      # container can `curl --cacert /shared/ca.crt`.
+      - certs:/shared
+    restart: unless-stopped
+
+  ws-flaky:
+    build:
+      context: ./ws-flaky
+    environment:
+      WS_IDLE_KILL_SECONDS: "3"
+    networks:
+      web_l4l7_net:
+        ipv4_address: 10.5.0.30
+    restart: unless-stopped
+
+networks:
+  web_l4l7_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.5.0.0/24
+
+volumes:
+  certs:

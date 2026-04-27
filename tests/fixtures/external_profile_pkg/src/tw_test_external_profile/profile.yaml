@@ -1,0 +1,4 @@
+name: tw_test_external
+llm:
+  system_prompt_file: prompts/system.md
+  max_rounds: 1

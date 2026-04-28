@@ -186,45 +186,59 @@ traceweaver/
 - [x] 优先级冲突时（同名 entry_point + builtin）entry_point 赢，stderr 一行警告 ✅
 - [x] 全套测试 `251 passed` 无回归（原 240 + 8 个 loader + 3 个 profile CLI） ✅
 
-### M6' — 第二个 reference profile（约 3-5 天）
+### M6' — 第二个 reference profile (`web_l4l7_failures`) ✅（已落地，2026-04-28）
 
 > **这是真正测试"core 是否协议无关"的硬指标。**
 >
 > 只有一个 profile 时，永远说不清楚 core 是真的通用还是隐性偏向 5GC。
 > 写第二个完全不同协议栈的 profile，把所有为 5GC 私下打的补丁都暴露出来。
 
-#### 候选协议（选一个，按上手成本排序）
+#### 选定协议
 
-| 协议 | 上手成本 | 验证价值 | tshark 支持 |
-|---|---|---|---|
-| **SIP / VoIP**（INVITE / 200 OK / BYE / 4xx-6xx） | 最低 | 中（应用层文本协议，与 5GC 二进制协议形态完全不同，能暴露 enricher 假设） | ✅ 原生 |
-| **4G EPC NAS**（Attach / Service Request） | 中 | 高（与 5GC 同家族，暴露"5GC profile 是否硬编码了 5G 字段名"） | ✅ 原生 |
-| **DNS 故障**（NXDOMAIN / SERVFAIL / 超时） | 最低 | 低（场景太轻，难以体现工具组合） | ✅ 原生 |
+`web_l4l7_failures`（DNS / TCP / TLS / WebSocket）—— 与 5GC 二进制协议形态完全不同，
+覆盖每个后端/运维工程师都会撞到的 L4-L7 故障空间，docker-compose 即可造故障。
+SIP/VoIP 改为 v0.2 候选。
 
-推荐 **SIP/VoIP**：与 5GC 形态差别最大，最能验证平台通用性，并且 SIP 实战场景普遍（IMS、企业 PBX 故障）。
+#### 实际产出
 
-#### 交付物
+- `tests/fixtures/web_l4l7/`：docker-compose 测试环境（dnsmasq + nginx + ws-flaky + 共享 CA），
+  `capture_all.{ps1,sh}` 一键产出 5 份 canonical pcap：
+  - `01_web_ok.pcapng` — DNS A/AAAA 双查 + 完整 TLS 1.3 握手 + FIN
+  - `02_dns_nxdomain.pcapng` — A + AAAA 都 NXDOMAIN
+  - `03_tcp_rst.pcapng` — 端口未监听 → 内核回 RST
+  - `04_tls_cert_expired.pcapng` — 用 CA 签的过期 cert，client `--cacert` → 看到 expired alert
+  - `05_ws_idle_killed.pcapng` — 受 netshoot websocat 行为限制，目前只抓到 DNS（已记 `tests/fixtures/web_l4l7/TODO.md`）
+- `traceweaver/profiles/web_l4l7_failures/`：
+  - `profile.yaml`（30+ tshark 字段，display_filter `dns || tcp || tls || http || websocket`）
+  - `fields.py`（DNS rcode / TLS handshake type / WS opcode / TCP flag bit 映射表）
+  - `enrich.py`（纯单帧 stateless，~280 行；包含 `_parse_bool_tshark` 处理 tshark 'True'/'False' 字面量）
+  - 6 个工具：`summarize_capture` / `list_flows` / `get_flow_timeline` /
+    `get_dns_queries` / `get_tls_handshakes` / `get_records_around`
+  - `prompts/system.md`：完整诊断 agent prompt
+  - `schema/diagnosis.json`：summary / failure_layer / root_cause / evidence / remediation / confidence
+  - `knowledge/`：DNS rcode、TCP 终止、TLS alert（含 TLS 1.3 加密 alert 处理建议）、WS close codes
+- `tests/profiles/web_l4l7_failures/`：48 个测试（23 enrich + 25 tools）全过
+- `scripts/smoke_web_l4l7_profile.py`：端到端 smoke，加载 profile + ingest 5 份真实 pcap +
+  跑 4 个工具 + 打印 wire signature
 
-```
-profiles_external/sip_voip/         # 作为外部 profile 包，验证 M5' entry_points
-├── profile.yaml                      # display_filter: "sip"
-├── enrich.py                         # SIP 字段 → event/method/status_code/call_id
-├── tools/
-│   ├── summarize_capture.py          # 中性事实信号：method 计数、4xx/5xx 计数、call 数
-│   ├── list_calls.py                 # 按 Call-ID 列出会话
-│   ├── get_call_timeline.py          # 单一 call 的全程消息
-│   └── get_sip_response_meaning.py   # 状态码字典
-├── prompts/system.md
-├── schema/diagnosis.json
-└── knowledge/sip_status_codes.md
-```
+#### 验收状态
 
-#### 验收（也是对 core 的真正考验）
+- [x] 写 web_l4l7_failures 过程中 **core 一行不改** ✅—— 真正验证了 core 协议无关性
+- [x] `traceweaver analyze --profile web_l4l7_failures pcaps/*.pcapng` 链路就绪（PcapSource + enricher + 工具）
+- [x] 5 份 canonical pcap 在手，4 份完美（DNS NXDOMAIN / TCP RST / TLS RST mid-handshake / Web OK）；05 ws fixture 已知不完整，详见 `tests/fixtures/web_l4l7/TODO.md`
+- [x] **关键 wire signature 全部识别正确**：
+  - TLS 1.3 healthy → `completed_likely_tls13`
+  - TLS 1.3 cert expired → `rst_mid_handshake`（profile 不依赖加密 alert.desc，靠 wire pattern）
+  - DNS dual-stack 假阴性 → `by_name.any_ok` 正确归并
+- [x] 全套 **299 passed** 无回归（原 251 + 48 个 web_l4l7_failures 测试）✅
+- [ ] **MCP serve 暴露 web_l4l7 工具**（profile 已 entry_points 兼容，下次需要时直接 `traceweaver serve --profile web_l4l7_failures`）
 
-- [ ] 写 SIP profile 过程中，**core 一行不改**——如果改了就是 core 没真的通用，记录痛点
-- [ ] SIP profile 通过 entry_points 安装，`traceweaver analyze --profile sip_voip *.pcap` 跑通
-- [ ] 准备 3-5 个 SIP canonical pcap（成功 INVITE / 4xx 拒绝 / 5xx 服务器故障 / BYE 异常），跑通诊断
-- [ ] MCP serve 暴露 SIP 工具，外部 agent 能用
+#### TLS 1.3 wire 处理决策记录
+
+抓 04 pcap 后发现 TLS 1.3 把所有 post-handshake alert 加密了，`tshark -e tls.alert_message.desc`
+拿不到。决策：profile **不依赖** alert 字段，靠"ClientHello + ServerHello + 中段 RST"
+wire pattern 推断 `rst_mid_handshake`。这个判定与 TLS 1.2 alert path 兼容（`status="alert"` 优先级更高），
+也是 TLS 1.3 时代唯一鲁棒的方法。详见 `knowledge/tls_alert_codes.md`。
 
 ### M7' — Case Memory（约 3-5 天，本期不展开）
 

@@ -1,0 +1,95 @@
+name: web_l4l7_failures
+version: "0.1"
+display_name: "Web L4-L7 connection failures (DNS / TCP / TLS / WebSocket)"
+description: >
+  Diagnosis profile for the most common HTTP-stack failures a backend or
+  ops engineer hits day-to-day: DNS resolution gone wrong, TCP refused
+  or RST'd, TLS handshake failures (cert / SNI / cipher), and abnormal
+  WebSocket disconnects. No application-layer decryption — handshake
+  observation is enough for these failure modes.
+
+applies_to_sources:
+  - pcap
+
+source_config:
+  pcap:
+    # Drop ARP / ICMPv6 chatter; keep only the protocol layers this
+    # profile reasons about. Tools and the LLM still get the raw
+    # `frame.protocols` for any frames that DO pass the filter.
+    display_filter: "dns || tcp || tls || http || websocket"
+    fields:
+      - "frame.protocols"
+      # IP / transport
+      - "ip.src"
+      - "ip.dst"
+      - "ipv6.src"
+      - "ipv6.dst"
+      - "tcp.srcport"
+      - "tcp.dstport"
+      - "tcp.stream"
+      - "tcp.flags"
+      - "tcp.analysis.retransmission"
+      - "udp.srcport"
+      - "udp.dstport"
+      - "udp.stream"
+      # DNS
+      - "dns.id"
+      - "dns.flags.response"
+      - "dns.flags.rcode"
+      - "dns.qry.name"
+      - "dns.qry.type"
+      - "dns.resp.name"
+      # TLS handshake (no decryption needed)
+      - "tls.handshake.type"
+      - "tls.handshake.extensions_server_name"
+      - "tls.handshake.ciphersuite"
+      - "tls.handshake.extensions.supported_version"
+      - "tls.alert_message.level"
+      - "tls.alert_message.desc"
+      # HTTP (anchor for WS upgrade and generic L7 errors)
+      - "http.request.method"
+      - "http.request.uri"
+      - "http.response.code"
+      - "http.upgrade"
+      # WebSocket
+      - "websocket.opcode"
+      - "websocket.payload_length"
+    key_strategy:
+      mode: "derived_fields"
+      fields:
+        - "tcp.stream"
+        - "dns.id"
+
+enrichers:
+  - module: traceweaver.profiles.web_l4l7_failures.enrich
+    function: enrich
+
+tools:
+  - module: traceweaver.profiles.web_l4l7_failures.tools.summarize_capture
+    class: SummarizeCaptureTool
+  - module: traceweaver.profiles.web_l4l7_failures.tools.list_flows
+    class: ListFlowsTool
+  - module: traceweaver.profiles.web_l4l7_failures.tools.get_flow_timeline
+    class: GetFlowTimelineTool
+  - module: traceweaver.profiles.web_l4l7_failures.tools.get_dns_queries
+    class: GetDNSQueriesTool
+  - module: traceweaver.profiles.web_l4l7_failures.tools.get_tls_handshakes
+    class: GetTLSHandshakesTool
+  - module: traceweaver.profiles.web_l4l7_failures.tools.get_records_around
+    class: GetRecordsAroundTool
+
+knowledge:
+  - file: knowledge/dns_rcodes.md
+    tags: ["dns", "rcode"]
+  - file: knowledge/tcp_termination.md
+    tags: ["tcp", "termination", "rst", "fin"]
+  - file: knowledge/tls_alert_codes.md
+    tags: ["tls", "alert", "handshake"]
+  - file: knowledge/ws_close_codes.md
+    tags: ["websocket", "close"]
+
+llm:
+  system_prompt_file: prompts/system.md
+  response_schema_file: schema/diagnosis.json
+  max_rounds: 8
+  recommended_model: "openai/qwen/qwen3.5-9b"

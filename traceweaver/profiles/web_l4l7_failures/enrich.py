@@ -236,10 +236,10 @@ def _ws_event(opcode: int | None) -> str | None:
 
 
 def _http_event(method: str | None, response_code: int | None, upgrade: str | None) -> str | None:
-    if upgrade and "websocket" in upgrade.lower():
-        return "WS_HANDSHAKE_REQUEST"
     if response_code == 101:
         return "WS_HANDSHAKE_RESPONSE_OK"
+    if upgrade and "websocket" in upgrade.lower() and method is not None:
+        return "WS_HANDSHAKE_REQUEST"
     if response_code is not None and 400 <= response_code < 600 and method is None:
         # request method is empty on response frames; keep this loose.
         return "HTTP_RESPONSE_ERROR"

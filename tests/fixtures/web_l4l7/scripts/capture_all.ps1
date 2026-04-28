@@ -190,11 +190,10 @@ Capture-Scenario -Name "04_tls_cert_expired" -Action {
 
 # --- Scenario 5: WebSocket abnormal disconnect. ---
 # ws-flaky aborts the TCP socket after WS_IDLE_KILL_SECONDS=3s.
-# Trick: pipe `sleep 5` into websocat so stdin stays OPEN until the
-# server-side kill fires; otherwise an `echo` stdin EOFs immediately
-# and websocat closes cleanly before the server has a chance to RST.
+# curl 8.18+ supports ws:// natively and keeps connection open for receive.
+# timeout 5s allows server-side RST to fire (3s) before client gives up.
 Capture-Scenario -Name "05_ws_idle_killed" -SettleMillis 1500 -Action {
-    docker exec $ClientName sh -c "sleep 5 | timeout 6 websocat -t ws://ws-flaky.local:8080/ ; true" | Out-Host
+    docker exec $ClientName sh -c "timeout 5 curl -v ws://ws-flaky.local:8080/ 2>&1 || true" | Out-Host
 }
 
 # --- Cleanup. ---

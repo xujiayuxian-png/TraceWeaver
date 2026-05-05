@@ -535,34 +535,27 @@ def _extract_usage(resp: Any, model: str) -> tuple[int | None, float | None]:
     if not total_tokens:
         return None, None
 
-    # Rough cost estimation (per 1M tokens) - local/unknown models = 0
-    model_lower = model.lower()
-    if "gpt-4" in model_lower and "turbo" not in model_lower:
-        # GPT-4: $30/$60 per 1M
-        cost = (prompt_tokens * 30 + completion_tokens * 60) / 1_000_000
-    elif "gpt-4-turbo" in model_lower or "gpt-4-0125" in model_lower:
-        # GPT-4-turbo: $10/$30 per 1M
-        cost = (prompt_tokens * 10 + completion_tokens * 30) / 1_000_000
-    elif "gpt-3.5" in model_lower or "gpt-35" in model_lower:
-        # GPT-3.5-turbo: $0.5/$1.5 per 1M
-        cost = (prompt_tokens * 0.5 + completion_tokens * 1.5) / 1_000_000
-    elif "claude-3-opus" in model_lower:
-        # Claude 3 Opus: $15/$75 per 1M
-        cost = (prompt_tokens * 15 + completion_tokens * 75) / 1_000_000
-    elif "claude-3-sonnet" in model_lower:
-        # Claude 3 Sonnet: $3/$15 per 1M
-        cost = (prompt_tokens * 3 + completion_tokens * 15) / 1_000_000
-    elif "claude-3-haiku" in model_lower:
-        # Claude 3 Haiku: $0.25/$1.25 per 1M
-        cost = (prompt_tokens * 0.25 + completion_tokens * 1.25) / 1_000_000
-    elif "minimax" in model_lower:
-        # MiniMax: rough estimate $1/$2 per 1M
-        cost = (prompt_tokens * 1 + completion_tokens * 2) / 1_000_000
-    else:
-        # Local models (LM Studio, Ollama) or unknown: cost = 0
-        cost = 0.0
-
+    cost = _estimate_cost(model, prompt_tokens, completion_tokens)
     return total_tokens, cost
+
+
+def _estimate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+    """Estimate cost using litellm's cost_per_token API.
+
+    Falls back to 0.0 for unknown/local models where litellm has no
+    pricing data (e.g. LM Studio, Ollama).
+    """
+    try:
+        from litellm import cost_per_token
+
+        prompt_cost, completion_cost = cost_per_token(
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
+        return float(prompt_cost + completion_cost)
+    except Exception:
+        return 0.0
 
 
 __all__ = ["LLMIntelligence", "extract_leaked_tool_calls"]

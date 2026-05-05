@@ -21,12 +21,12 @@
 
 衡量项目是否朝目标推进的硬指标：
 
-1. 加入一种新协议（任意 vendor 5GC、4G EPC、SIP/VoIP、SDN 控制面、应用层…）只需写一份 profile 包，**不改 core**。
-2. 任何外部 agent（Claude、Cursor、自建 LangGraph 编排）能通过 MCP 直接调用 TraceWeaver 的工具，把它当作"看包诊断的智能体子系统"。
-3. 新协议的 profile 可以作为独立 pip 包发布安装，**不需要 fork 主仓库**。
-4. Source 协议保持"任何返回 `Record` 的实现都合法"——多源能力作为可选外部扩展存在，但不进入 core / builtin。
+1. 加入一种新协议（任意 vendor 5GC、4G EPC、SIP/VoIP、SDN 控制面、应用层…）只需写一份 profile 包，**不改 core**。✅ **M6' 已验证**——`web_l4l7_failures` 写 profile 过程中 core 一行不改。
+2. 任何外部 agent（Claude、Cursor、自建 LangGraph 编排）能通过 MCP 直接调用 TraceWeaver 的工具，把它当作"看包诊断的智能体子系统"。✅ **M4' 已交付**——`traceweaver serve` 通过 MCP stdio 暴露工具。
+3. 新协议的 profile 可以作为独立 pip 包发布安装，**不需要 fork 主仓库**。✅ **M5' 已交付**——三源 loader（entry_points > builtin > local dirs）+ `profile list` 命令。
+4. Source 协议保持"任何返回 `Record` 的实现都合法"——多源能力作为可选外部扩展存在，但不进入 core / builtin。✅ **架构层面一直如此**——`Source` ABC 从未绑定特定实现。
 
-四点都做到，平台目标算落地。当前一项都没真正完成。
+四点中前三点已由 M4'-M6' 交付验证，第四点在架构层面始终成立。**平台目标基本落地**，剩余工作（Case Memory、HTTP transport 等）属于增强而非基础能力建设。
 
 ---
 

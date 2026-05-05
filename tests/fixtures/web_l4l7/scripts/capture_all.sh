@@ -96,10 +96,11 @@ capture_scenario "03_tcp_rst" \
 capture_scenario "04_tls_cert_expired" \
     docker exec "${CLIENT_NAME}" sh -c "curl -sS -o /dev/null --max-time 5 --cacert /shared/ca.crt https://tls-broken.local:4443/ ; true"
 
-# `sleep 5` keeps stdin open so websocat doesn't EOF-close before the
-# server-side abort fires.
+# curl 8.18+ supports ws:// natively and keeps the connection open for
+# receive. timeout 5s allows server-side RST to fire (3s) before client
+# gives up. Falls back to websocat if curl lacks WebSocket support.
 SETTLE_MS=1500 capture_scenario "05_ws_idle_killed" \
-    docker exec "${CLIENT_NAME}" sh -c "sleep 5 | timeout 6 websocat -t ws://ws-flaky.local:8080/ ; true"
+    docker exec "${CLIENT_NAME}" sh -c 'timeout 5 curl -v ws://ws-flaky.local:8080/ 2>&1 || true'
 
 trap - ERR EXIT
 cleanup_all

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "traceweaver"
-version = "0.0.0"
+version = "0.2.0a0"
 description = "An LLM-first, pluggable platform for pcap and log analysis"
 requires-python = ">=3.11"
 dependencies = [

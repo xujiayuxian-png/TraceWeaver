@@ -1,4 +1,5 @@
 from __future__ import annotations
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -30,14 +31,30 @@ class AgentTrace:
     wall_clock_s: float = 0.0
 
     def total_tokens(self) -> int:
+        warnings.warn(
+            "AgentTrace.total_tokens() always returns 0. "
+            "Use AgentResult.total_tokens instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return 0
 
     def total_cost_usd(self) -> float:
+        warnings.warn(
+            "AgentTrace.total_cost_usd() always returns 0. "
+            "Use AgentResult.total_cost_usd instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return 0.0
 
     def tool_time_s(self) -> float:
-        # Tool execution time is not tracked individually in this implementation
-        # Return 0.0 as a placeholder
+        warnings.warn(
+            "AgentTrace.tool_time_s() always returns 0. "
+            "Use AgentResult.wall_clock_s instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return 0.0
 
 

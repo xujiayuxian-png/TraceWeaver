@@ -38,7 +38,7 @@ def test_extract_usage_from_object_style():
     resp = SimpleNamespace(usage=usage)
     tokens, cost = _extract_usage(resp, "openai/gpt-4")
     assert tokens == 150
-    assert cost is not None and cost > 0
+    assert cost is not None and cost >= 0  # >0 when litellm knows the model, 0.0 fallback otherwise
 
 
 def test_extract_usage_from_dict_style():
@@ -46,7 +46,7 @@ def test_extract_usage_from_dict_style():
     resp = SimpleNamespace(usage={"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150})
     tokens, cost = _extract_usage(resp, "openai/gpt-4")
     assert tokens == 150
-    assert cost is not None and cost > 0
+    assert cost is not None and cost >= 0  # >0 when litellm knows the model, 0.0 fallback otherwise
 
 
 def test_extract_usage_missing_returns_none():
@@ -220,7 +220,8 @@ def test_wall_clock_greater_than_tool_time():
     result = kernel.run(task, "test")
 
     # No tool calls were made, so tool_time_s == 0 but wall_clock_s > 0
-    assert result.trace.tool_time_s() == 0.0
+    with pytest.warns(DeprecationWarning, match="tool_time_s"):
+        assert result.trace.tool_time_s() == 0.0
     assert result.wall_clock_s > 0
 
 

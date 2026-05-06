@@ -75,6 +75,8 @@ tools:
     class: GetDNSQueriesTool
   - module: traceweaver.profiles.web_l4l7_failures.tools.get_tls_handshakes
     class: GetTLSHandshakesTool
+  - module: traceweaver.profiles.web_l4l7_failures.tools.get_records_around
+    class: GetRecordsAroundTool
 
 knowledge:
   - file: knowledge/dns_rcodes.md

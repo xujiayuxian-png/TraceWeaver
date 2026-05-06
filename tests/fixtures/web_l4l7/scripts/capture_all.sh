@@ -62,10 +62,13 @@ done
 capture_scenario() {
     local name="$1"; shift
     local settle_ms="${SETTLE_MS:-800}"
-    local pcap="/pcaps/${name}.pcapng"
+    local pcap="/tmp/${name}.pcapng"
     echo ">> ${name}"
 
     stop_capture
+    # tshark drops privileges via dumpcap and cannot write directly to
+    # volume-mounted directories on some setups. Write to /tmp inside the
+    # container, then copy out after capture completes.
     docker run -d \
         --name "${CAP_NAME}" \
         --network "container:${CLIENT_NAME}" \
@@ -73,12 +76,17 @@ capture_scenario() {
         --cap-add NET_RAW \
         -v "${PCAP_DIR}:/pcaps" \
         "${NETSHOOT_IMAGE}" \
-        tshark -i eth0 -w "${pcap}" -F pcapng -q >/dev/null
+        sh -c "tshark -i eth0 -w '${pcap}' -F pcapng -q >/dev/null 2>&1 &
+               TSHARK_PID=\$!; sleep 9999 & WAIT_PID=\$!; wait \$WAIT_PID" >/dev/null
 
     sleep "$(awk "BEGIN {print ${settle_ms}/1000}")"
     "$@" || true
     sleep "$(awk "BEGIN {print ${settle_ms}/1000}")"
-    stop_capture
+
+    # Graceful stop: send SIGINT to tshark so it flushes the pcap footer.
+    docker stop -t 5 "${CAP_NAME}" >/dev/null 2>&1 || true
+    docker cp "${CAP_NAME}:${pcap}" "${PCAP_DIR}/${name}.pcapng" 2>/dev/null || true
+    docker rm -f "${CAP_NAME}" >/dev/null 2>&1 || true
 }
 
 echo "[3/3] running 5 capture scenarios..."

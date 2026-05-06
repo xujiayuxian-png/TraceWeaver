@@ -66,7 +66,7 @@
 | 🧠 **Long-Chain Reasoning** | 6-12 rounds of tool orchestration + LLM inference | 6-12 轮工具编排与 LLM 推理 |
 | 🔧 **Tool-First Architecture** | Tools return facts only; LLM makes judgments | 工具只返事实，LLM 独立判断 |
 | 🔌 **Pluggable Profiles** | Drop-in protocol support without core changes | 热插拔协议支持，零核心入侵 |
-| 🤖 **MCP Integration** | Exposes tools to external agents (Cursor, Claude, etc.) | 向外部 Agent 暴露工具接口 |
+| 🤖 **MCP Integration** | Multi-profile tool surface for external agents (Cursor, Claude, etc.) | 多 Profile 工具暴露，支持外部 Agent 调用 |
 
 ---
 
@@ -138,27 +138,79 @@ pip install -e ".[mcp-server]"
 
 ```bash
 # Analyze a PCAP with default profile
-python -m traceweaver.cli analyze \
-  --profile traceweaver/profiles/web_l4l7_failures \
+traceweaver analyze \
+  --profile web_l4l7_failures \
   --pcap tests/fixtures/web_l4l7/pcaps/03_tcp_rst.pcapng \
   --model openai/qwen/qwen3-14b \
   "Diagnose this network capture. What went wrong?"
 ```
 
-### Python API | Python 接口
+### MCP Server | MCP 服务
 
-```python
-from traceweaver.cli.analyze import analyze_capture
-from traceweaver.core.profile.loader import load_profile
+TraceWeaver can expose its diagnostic tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), allowing external agents (Claude Desktop, Cursor, Cline, etc.) to call them directly.
 
-profile = load_profile("traceweaver/profiles/open5gs_5gc")
-result = analyze_capture(
-    profile=profile,
-    pcap_path="tests/fixtures/pcap/registration_success.pcapng",
-    model="openai/qwen/qwen3-14b",
-    question="Why did the UE registration fail?"
-)
-print(result.model_dump_json(indent=2))
+**Start the server** (configure once, use forever):
+
+```bash
+# Single profile — capture loaded at runtime via load_capture tool
+traceweaver serve --profile open5gs_5gc
+
+# Multi-profile — all profiles available, prefixed tools
+traceweaver serve \
+  --profile open5gs_5gc \
+  --profile web_l4l7_failures \
+  --default-profile open5gs_5gc
+```
+
+**In the agent**, load captures on demand — no server restart needed:
+
+```
+User: 帮我分析一下 /tmp/registration_failure.pcapng
+Agent: [calls load_capture(path="/tmp/registration_failure.pcapng")]
+       [calls summarize_capture → list_ue_sessions → get_ue_timeline → ...]
+       [returns diagnosis]
+```
+
+When multiple profiles are loaded, profile-specific tools are **prefixed** with `<profile>__`:
+
+| Tool name | Owner |
+|-----------|-------|
+| `load_capture` | meta-tool (load a pcap at runtime) |
+| `list_profiles` | meta-tool (list loaded profiles) |
+| `list_captures` | meta-tool (show loaded captures) |
+| `query_records` | built-in (routes to default profile) |
+| `search_knowledge` | built-in |
+| `open5gs_5gc__summarize_capture` | open5gs_5gc |
+| `open5gs_5gc__load_capture` | open5gs_5gc |
+| `web_l4l7_failures__list_flows` | web_l4l7_failures |
+
+**Claude Desktop configuration** (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "traceweaver": {
+      "command": "traceweaver",
+      "args": [
+        "serve",
+        "--profile", "open5gs_5gc",
+        "--profile", "web_l4l7_failures",
+        "--default-profile", "open5gs_5gc"
+      ]
+    }
+  }
+}
+```
+
+> No `--pcap` needed in the config. The agent calls `load_capture(path=...)` whenever it has a new file to analyze.
+
+**Replay** — verify a recorded LLM session deterministically:
+
+```bash
+traceweaver replay \
+  --profile open5gs_5gc \
+  --pcap path/to/capture.pcapng \
+  --recording path/to/session.yaml
 ```
 
 ---
@@ -224,11 +276,42 @@ TraceWeaver 诞生于一个朴素的需求：**降低网络抓包分析的门槛
 2. **Core 与 Profile 彻底分离** —— 新协议支持零核心入侵
 3. **MCP 协议优先** —— 可被 Cursor、Claude 等外部 Agent 调用
 
+### 快速上手
+
+```bash
+# 安装
+pip install -e ".[dev,mcp-server]"
+
+# 命令行诊断
+traceweaver analyze --profile open5gs_5gc --pcap capture.pcapng "为什么注册失败？"
+
+# 启动 MCP 服务（配一次，反复用）
+traceweaver serve --profile open5gs_5gc --profile web_l4l7_failures
+
+# Agent 端调用 load_capture 加载抓包，无需重启服务
+```
+
+### Claude Desktop / Cursor 配置示例
+
+```json
+{
+  "mcpServers": {
+    "traceweaver": {
+      "command": "traceweaver",
+      "args": ["serve", "--profile", "open5gs_5gc", "--profile", "web_l4l7_failures"]
+    }
+  }
+}
+```
+
+配好之后，agent 遇到抓包分析需求时直接调 `load_capture(path="/path/to/pcap")`，然后用 `summarize_capture` 等工具诊断，**换抓包不用改配置**。
+
 ### 技术栈
 
 - **Python 3.11+** — 类型安全、性能优异
 - **Pydantic v2** — 数据验证与序列化
 - **LiteLLM** — 统一 LLM 调用接口
 - **tshark** — 底层协议解析引擎
+- **MCP SDK** — Model Context Protocol 集成
 
 </div>

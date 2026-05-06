@@ -28,6 +28,7 @@ from traceweaver.core.protocols import (
 from traceweaver.core.tools.registry import ToolRegistry
 from traceweaver.serve.mcp import build_mcp_server
 from traceweaver.serve.runtime import ServeContext
+from traceweaver.serve.session import CaptureSession
 
 
 class _FakeHandle(SourceHandle):
@@ -56,9 +57,11 @@ def _make_server():
     reg = ToolRegistry()
     reg.register(_PingTool())
     profile = type("FakeProfile", (), {"name": "fake_profile"})()
+    session = CaptureSession()
+    session.load(_FakeHandle(), "memory://fake")
     serve_ctx = ServeContext(
         profile=profile,  # type: ignore[arg-type]
-        handle=_FakeHandle(),
+        session=session,
         knowledge=None,
         tool_registry=reg,
     )

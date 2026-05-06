@@ -31,7 +31,7 @@ from mcp.server import Server
 from mcp.types import TextContent
 from mcp.types import Tool as MCPTool
 
-from traceweaver.serve.runtime import ServeContext
+from traceweaver.serve.runtime import MultiServeContext, ServeContext
 
 
 def build_mcp_server(
@@ -83,6 +83,55 @@ def build_mcp_server(
     return server
 
 
+def build_mcp_server_multi(
+    multi_ctx: MultiServeContext,
+    *,
+    server_name: str = "traceweaver",
+) -> Server:
+    """Build an MCP server that exposes tools from multiple profiles.
+
+    Profile-specific tools are prefixed with ``<profile>__`` in the
+    tool catalogue.  Built-in tools (unprefixed) route to the default
+    profile's source handle and knowledge store.
+    """
+    server: Server = Server(server_name)
+
+    @server.list_tools()
+    async def _list_tools() -> list[MCPTool]:
+        return [
+            MCPTool(**tool.spec.to_mcp_tool())
+            for tool in multi_ctx.tool_registry.values()
+        ]
+
+    @server.call_tool()
+    async def _call_tool(
+        name: str, arguments: dict[str, Any] | None
+    ) -> list[TextContent]:
+        profile_name, _serve_ctx = multi_ctx.profile_for_tool(name)
+        ctx = multi_ctx.make_tool_context(profile_name)
+        try:
+            result = multi_ctx.tool_registry.invoke(name, arguments or {}, ctx)
+        except (KeyError, ValueError, TypeError) as exc:
+            err_payload = {"error": f"{type(exc).__name__}: {exc}"}
+            raise _ToolInvocationError(
+                json.dumps(err_payload, ensure_ascii=False)
+            ) from exc
+
+        payload: dict[str, Any] = {"data": result.data}
+        if result.refs:
+            payload["refs"] = list(result.refs)
+        if result.truncated:
+            payload["truncated"] = True
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(payload, ensure_ascii=False, default=str),
+            )
+        ]
+
+    return server
+
+
 class _ToolInvocationError(Exception):
     """
     Internal exception used to translate registry errors into
@@ -109,4 +158,4 @@ async def run_stdio(server: Server) -> None:
         )
 
 
-__all__ = ["build_mcp_server", "run_stdio"]
+__all__ = ["build_mcp_server", "build_mcp_server_multi", "run_stdio"]

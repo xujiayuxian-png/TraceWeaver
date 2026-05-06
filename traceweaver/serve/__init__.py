@@ -12,12 +12,20 @@ transport so future HTTP / SSE adapters can reuse it verbatim.
 
 from __future__ import annotations
 
-from traceweaver.serve.runtime import ServeContext, build_serve_context
-from traceweaver.serve.mcp import build_mcp_server, run_stdio
+from traceweaver.serve.runtime import (
+    ServeContext,
+    build_serve_context,
+    MultiServeContext,
+    build_multi_serve_context,
+)
+from traceweaver.serve.mcp import build_mcp_server, build_mcp_server_multi, run_stdio
 
 __all__ = [
     "ServeContext",
     "build_serve_context",
+    "MultiServeContext",
+    "build_multi_serve_context",
     "build_mcp_server",
+    "build_mcp_server_multi",
     "run_stdio",
 ]

@@ -46,7 +46,8 @@
 
 | 维度 | 证据 |
 |---|---|
-| **MCP server / HTTP server**（外部 agent 接入） | `pyproject.toml` 有 `optional-dependencies.mcp-server` 占位但**零代码**；CLI 只有 `analyze` / `validate-profile` |
+| **MCP server** | ✅ **M4' 已交付** — `traceweaver serve` 通过 stdio 暴露工具；支持多 Profile（`--profile` 可重复，工具名自动加 `<profile>__` 前缀） |
+| **HTTP server** | 仅 stdio transport；SSE / HTTP transport 延后 |
 | **Profile entry_points 第三方分发** | `pyproject.toml` 无 `[project.entry-points]`；`core/profile/loader.py` 自己注释 "pip-packaged profiles (entry_points) are M4+" |
 | **第二个 reference profile（验证协议无关性）** | 当前只有 Open5GS 5GC 一个 profile，无法证伪/证实"core 真的协议无关" |
 | **ToolSpec 自动从 Pydantic 生成** | 6 个工具仍各自手写 JSON Schema —— 即 `REFACTOR_PLAN.md` 阶段 B 未做 |
@@ -135,30 +136,32 @@
 
 ```
 traceweaver/
-├── serve/                       # ✅ MVP 已完成
-│   ├── __init__.py              # build_serve_context / build_mcp_server / run_stdio
-│   ├── runtime.py               # ServeContext: profile + ingest + enrich + tool_registry
-│   └── mcp.py                   # ToolRegistry → MCP Server、list_tools / call_tool handler
+├── serve/                       # ✅ 已完成（含多 Profile 支持）
+│   ├── __init__.py              # build_serve_context / build_mcp_server / build_multi_serve_context / run_stdio
+│   ├── runtime.py               # ServeContext + MultiServeContext: 多 profile 合并工具注册
+│   └── mcp.py                   # build_mcp_server + build_mcp_server_multi
 └── cli/
-    └── serve.py                 # `traceweaver serve --transport stdio` （已注册到 cli/__init__.py）
+    └── serve.py                 # `traceweaver serve --profile X --pcap Y [--profile A --pcap B]`
 ```
 
 #### 实现重点（已落地）
 
-- 加了 `ToolSpec.to_mcp_tool()` 输出 MCP-原生 `name + description + inputSchema` 格式
-- `ServeContext` 复用 `ingest_for_profile` + `build_knowledge_store` + `register_builtin_tools` + `load_profile_tools`，不重复 kernel/CLI 逻辑
-- `build_mcp_server` 用 `mcp.server.lowlevel.Server`、`@server.list_tools()` + `@server.call_tool()` 装饰器跳转到 `ToolRegistry.invoke(...)`
+- `ToolSpec.to_mcp_tool()` 输出 MCP 原生 `name + description + inputSchema` 格式
+- `ServeContext` 复用 `ingest_for_profile` + `build_knowledge_store` + `register_builtin_tools` + `load_profile_tools`
+- `build_mcp_server` 用 `mcp.server.lowlevel.Server`、`@server.list_tools()` + `@server.call_tool()` 装饰器
 - ToolResult 统一包为 `{"data", "refs?", "truncated?"}` JSON 字符串放入 `TextContent`
-- 异常转为 `isError=True` + JSON `{"error": "..."}` 负载，不抹去原型信息
-- **依赖**：`pyproject.toml.optional-dependencies.mcp-server = ["mcp>=1.0"]`，安装后才可用
-- **capture 绑定模式**：启动时绑（方案 A）——一个 server = 一个 capture
+- 异常转为 `isError=True` + JSON `{"error": "..."}` 负载
+- **依赖**：`pyproject.toml.optional-dependencies.mcp-server = ["mcp>=1.0"]`
+- **capture 绑定模式**：启动时绑（方案 A）——一个 server = 一个或多个 capture
+- **多 Profile 支持**：`--profile` 可重复，profile 专属工具自动加 `<profile>__` 前缀，内置工具无前缀路由到默认 profile
+- `list_profiles` 元工具：列出已加载的 profile 及默认 profile
 
 #### 验收状态
 
 - [x] 单元测试 8/8：list_tools / call_tool / 错误路径 / `to_mcp_tool` 字段 ✅
 - [x] E2E 内存测试 1/1：`create_connected_server_and_client_session` 完整握手路径 ✅
 - [x] 真实 stdio 子进程 smoke（`scripts/smoke_mcp_serve.py`）：9 个工具被正确暴露、`summarize_capture` 返回 1 UE / 8 events，与 `analyze` 一致 ✅
-- [x] 全套件 240 passed（8 个新 mcp 测试 + 原 232） ✅
+- [x] 多 Profile 支持：14 个新测试（`tests/serve/test_multi_profile.py`）覆盖前缀、路由、元工具 ✅
 - [ ] **Claude Desktop 手动验证**（交给用户：配 `mcp_config.json` 后从 UI 调用工具）
 - [ ] HTTP/SSE transport —— **推 v0.2**，当前 MVP 不作为验收项（与 Cascade / Cursor / Claude Desktop 集成只需 stdio，http 是远程部署场景）
 

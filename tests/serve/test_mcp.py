@@ -28,6 +28,7 @@ from traceweaver.core.protocols import (
 from traceweaver.core.tools.registry import ToolRegistry
 from traceweaver.serve.mcp import build_mcp_server
 from traceweaver.serve.runtime import ServeContext
+from traceweaver.serve.session import CaptureSession
 
 
 # ---- minimal fakes ---------------------------------------------------
@@ -83,12 +84,12 @@ def _make_serve_ctx() -> ServeContext:
     reg = ToolRegistry()
     reg.register(_EchoTool())
     reg.register(_BoomTool())
-    # Bypass `dataclass(frozen=True)` validators by using a dummy
-    # Profile-shaped object — we only access `.name` from the ctx.
     profile = type("FakeProfile", (), {"name": "fake_profile"})()
+    session = CaptureSession()
+    session.load(_FakeHandle(), "memory://fake")
     return ServeContext(
         profile=profile,  # type: ignore[arg-type]
-        handle=_FakeHandle(),
+        session=session,
         knowledge=None,
         tool_registry=reg,
     )

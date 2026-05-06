@@ -10,11 +10,18 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel, Field
 from traceweaver.core.protocols import Tool, ToolContext, ToolResult, ToolSpec
 
 
 _DEFAULT_LIMIT = 50
 _MAX_LIMIT = 200
+
+
+class _GetUETimelineInput(BaseModel):
+    ran_ue_ngap_id: str | None = Field(default=None)
+    amf_ue_ngap_id: str | None = Field(default=None)
+    limit: int = Field(default=_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT)
 
 
 def _match(rec_fields: dict[str, Any], ran: str | None, amf: str | None) -> bool:
@@ -28,7 +35,8 @@ def _match(rec_fields: dict[str, Any], ran: str | None, amf: str | None) -> bool
 
 
 class GetUETimelineTool(Tool):
-    spec = ToolSpec(
+    spec = ToolSpec.from_pydantic(
+        _GetUETimelineInput,
         name="get_ue_timeline",
         description=(
             "Return the ordered timeline of NAS/NGAP events for a specific "
@@ -39,15 +47,6 @@ class GetUETimelineTool(Tool):
             "protocol_layer, mm_cause, sm_cause, src_ip, dst_ip}`. "
             "Use `limit` to cap output (default 50, max 200)."
         ),
-        parameters_schema={
-            "type": "object",
-            "properties": {
-                "ran_ue_ngap_id": {"type": "string"},
-                "amf_ue_ngap_id": {"type": "string"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": _MAX_LIMIT},
-            },
-            "required": [],
-        },
     )
 
     def run(self, ctx: ToolContext, **kwargs: Any) -> ToolResult:

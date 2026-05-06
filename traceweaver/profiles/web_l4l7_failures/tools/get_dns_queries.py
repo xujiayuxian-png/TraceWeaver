@@ -19,11 +19,20 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from pydantic import BaseModel, Field
 from traceweaver.core.protocols import Tool, ToolContext, ToolResult, ToolSpec
 
 
+class _GetDNSQueriesInput(BaseModel):
+    qname_contains: str | None = Field(
+        default=None,
+        description="Substring filter applied to qname (case-insensitive). Useful when the capture has many distinct names.",
+    )
+
+
 class GetDNSQueriesTool(Tool):
-    spec = ToolSpec(
+    spec = ToolSpec.from_pydantic(
+        _GetDNSQueriesInput,
         name="get_dns_queries",
         description=(
             "Join DNS queries with their responses by `dns.id` + qtype, "
@@ -37,19 +46,6 @@ class GetDNSQueriesTool(Tool):
             "fires parallel A + AAAA queries — a single name with one "
             "ok and one nxdomain (because no AAAA record) is NORMAL."
         ),
-        parameters_schema={
-            "type": "object",
-            "properties": {
-                "qname_contains": {
-                    "type": "string",
-                    "description": (
-                        "Substring filter applied to qname (case-insensitive). "
-                        "Useful when the capture has many distinct names."
-                    ),
-                },
-            },
-            "required": [],
-        },
     )
 
     def run(self, ctx: ToolContext, **kwargs: Any) -> ToolResult:

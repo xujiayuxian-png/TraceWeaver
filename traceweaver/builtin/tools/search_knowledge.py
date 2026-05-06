@@ -1,23 +1,23 @@
 """search_knowledge: profile knowledge-base lookup."""
 from __future__ import annotations
 from typing import Any
+from pydantic import BaseModel, Field
 from traceweaver.core.protocols import Tool, ToolContext, ToolResult, ToolSpec
 
 _MAX_LIMIT = 10
 
+
+class _SearchKnowledgeInput(BaseModel):
+    query: str = Field(description="Keyword query")
+    tags: list[str] | None = Field(default=None, description="Optional tag filter")
+    limit: int = Field(default=3, ge=1, le=_MAX_LIMIT, description="Max hits (1-10)")
+
+
 class SearchKnowledgeTool(Tool):
-    spec = ToolSpec(
+    spec = ToolSpec.from_pydantic(
+        _SearchKnowledgeInput,
         name="search_knowledge",
         description="Search the profile's knowledge base for documents matching a keyword query.",
-        parameters_schema={
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Keyword query"},
-                "tags": {"type": "array", "items": {"type": "string"}, "description": "Optional tag filter"},
-                "limit": {"type": "integer", "description": "Max hits (1-10)", "minimum": 1, "maximum": _MAX_LIMIT},
-            },
-            "required": ["query"],
-        },
     )
 
     def run(self, ctx: ToolContext, **kwargs: Any) -> ToolResult:

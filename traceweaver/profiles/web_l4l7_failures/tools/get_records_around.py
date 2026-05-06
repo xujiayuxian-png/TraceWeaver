@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel, Field
 from traceweaver.core.protocols import Tool, ToolContext, ToolResult, ToolSpec
 
 
@@ -19,8 +20,15 @@ _DEFAULT_AFTER = 2
 _MAX_WINDOW = 20
 
 
+class _GetRecordsAroundInput(BaseModel):
+    seq: int = Field(description="Anchor seq (frame.number).")
+    before: int = Field(default=_DEFAULT_BEFORE, ge=0, le=_MAX_WINDOW, description="Frames before the anchor (default 2).")
+    after: int = Field(default=_DEFAULT_AFTER, ge=0, le=_MAX_WINDOW, description="Frames after the anchor (default 2).")
+
+
 class GetRecordsAroundTool(Tool):
-    spec = ToolSpec(
+    spec = ToolSpec.from_pydantic(
+        _GetRecordsAroundInput,
         name="get_records_around",
         description=(
             "Return frames immediately before and after a given seq "
@@ -31,28 +39,6 @@ class GetRecordsAroundTool(Tool):
             "after spotting an anchor event (e.g. a TCP_RST or "
             "TLS_ALERT) to see what happened right around it."
         ),
-        parameters_schema={
-            "type": "object",
-            "properties": {
-                "seq": {
-                    "type": "integer",
-                    "description": "Anchor seq (frame.number).",
-                },
-                "before": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": _MAX_WINDOW,
-                    "description": "Frames before the anchor (default 2).",
-                },
-                "after": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": _MAX_WINDOW,
-                    "description": "Frames after the anchor (default 2).",
-                },
-            },
-            "required": ["seq"],
-        },
     )
 
     def run(self, ctx: ToolContext, **kwargs: Any) -> ToolResult:

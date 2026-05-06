@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel, Field
 from traceweaver.core.protocols import Tool, ToolContext, ToolResult, ToolSpec
 
 
@@ -16,8 +17,15 @@ _DEFAULT_LIMIT = 50
 _MAX_LIMIT = 300
 
 
+class _GetPFCPExchangesInput(BaseModel):
+    msg_name_contains: str | None = Field(default=None)
+    seid: str | None = Field(default=None)
+    limit: int = Field(default=_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT)
+
+
 class GetPFCPExchangesTool(Tool):
-    spec = ToolSpec(
+    spec = ToolSpec.from_pydantic(
+        _GetPFCPExchangesInput,
         name="get_pfcp_exchanges",
         description=(
             "List PFCP messages observed between SMF and UPF. Each entry "
@@ -26,19 +34,6 @@ class GetPFCPExchangesTool(Tool):
             "(case-insensitive, matches SESSION_ESTABLISHMENT, MODIFICATION, "
             "DELETION, HEARTBEAT, etc.) or `seid` for a specific session."
         ),
-        parameters_schema={
-            "type": "object",
-            "properties": {
-                "msg_name_contains": {"type": "string"},
-                "seid": {"type": "string"},
-                "limit": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": _MAX_LIMIT,
-                },
-            },
-            "required": [],
-        },
     )
 
     def run(self, ctx: ToolContext, **kwargs: Any) -> ToolResult:

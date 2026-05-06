@@ -9,8 +9,9 @@ name + category so the LLM doesn't have to parse markdown.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
+from pydantic import BaseModel, Field
 from traceweaver.core.protocols import Tool, ToolContext, ToolResult, ToolSpec
 
 
@@ -87,8 +88,14 @@ _CAUSE_5GSM: dict[int, tuple[str, str]] = {
 }
 
 
+class _GetNasCauseMeaningInput(BaseModel):
+    code: int
+    layer: Literal["5gmm", "5gsm"] = Field(description="Which NAS layer the cause belongs to.")
+
+
 class GetNasCauseMeaningTool(Tool):
-    spec = ToolSpec(
+    spec = ToolSpec.from_pydantic(
+        _GetNasCauseMeaningInput,
         name="get_nas_cause_meaning",
         description=(
             "Translate a 5GMM or 5GSM cause code to a human-readable "
@@ -97,18 +104,6 @@ class GetNasCauseMeaningTool(Tool):
             "`{code, layer, name, category}`. Call `search_knowledge` "
             "for the full paragraph-long explanation."
         ),
-        parameters_schema={
-            "type": "object",
-            "properties": {
-                "code": {"type": "integer"},
-                "layer": {
-                    "type": "string",
-                    "enum": ["5gmm", "5gsm"],
-                    "description": "Which NAS layer the cause belongs to.",
-                },
-            },
-            "required": ["code", "layer"],
-        },
     )
 
     def run(self, ctx: ToolContext, **kwargs: Any) -> ToolResult:

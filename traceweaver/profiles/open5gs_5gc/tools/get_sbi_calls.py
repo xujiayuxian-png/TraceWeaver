@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel, Field
 from traceweaver.core.protocols import Tool, ToolContext, ToolResult, ToolSpec
 
 
@@ -22,8 +23,16 @@ _DEFAULT_LIMIT = 50
 _MAX_LIMIT = 300
 
 
+class _GetSBICallsInput(BaseModel):
+    path_contains: str | None = Field(default=None)
+    method: str | None = Field(default=None)
+    status: int | None = Field(default=None)
+    limit: int = Field(default=_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT)
+
+
 class GetSBICallsTool(Tool):
-    spec = ToolSpec(
+    spec = ToolSpec.from_pydantic(
+        _GetSBICallsInput,
         name="get_sbi_calls",
         description=(
             "List HTTP/2 SBI calls observed in the capture, one entry per "
@@ -34,20 +43,6 @@ class GetSBICallsTool(Tool):
             "Nsmf_*, Nausf_* failures. Filter with `path_contains` (case-"
             "insensitive substring) to narrow down to one service."
         ),
-        parameters_schema={
-            "type": "object",
-            "properties": {
-                "path_contains": {"type": "string"},
-                "method": {"type": "string"},
-                "status": {"type": "integer"},
-                "limit": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": _MAX_LIMIT,
-                },
-            },
-            "required": [],
-        },
     )
 
     def run(self, ctx: ToolContext, **kwargs: Any) -> ToolResult:

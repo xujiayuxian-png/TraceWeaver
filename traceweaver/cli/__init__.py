@@ -36,11 +36,13 @@ def main(argv: list[str] | None = None) -> int:
 
     from traceweaver.cli.analyze import register as register_analyze
     from traceweaver.cli.profile import register as register_profile
+    from traceweaver.cli.replay import register as register_replay
     from traceweaver.cli.serve import register as register_serve
     from traceweaver.cli.validate_profile import register as register_validate
 
     register_analyze(sub)
     register_profile(sub)
+    register_replay(sub)
     register_serve(sub)
     register_validate(sub)
 

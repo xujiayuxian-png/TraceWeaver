@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel, Field
 from traceweaver.core.protocols import Tool, ToolContext, ToolResult, ToolSpec
 
 
@@ -17,8 +18,16 @@ _DEFAULT_LIMIT = 50
 _MAX_LIMIT = 200
 
 
+class _GetFlowTimelineInput(BaseModel):
+    flow_id: str = Field(
+        description="Flow identifier of the form 'tcp:<n>' or 'dns:<n>' as returned by list_flows."
+    )
+    limit: int = Field(default=_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT)
+
+
 class GetFlowTimelineTool(Tool):
-    spec = ToolSpec(
+    spec = ToolSpec.from_pydantic(
+        _GetFlowTimelineInput,
         name="get_flow_timeline",
         description=(
             "Return the ordered timeline of events for a specific flow "
@@ -30,24 +39,6 @@ class GetFlowTimelineTool(Tool):
             "tcp_flag_names, is_retransmit}`. Use `limit` to cap output "
             "(default 50, max 200)."
         ),
-        parameters_schema={
-            "type": "object",
-            "properties": {
-                "flow_id": {
-                    "type": "string",
-                    "description": (
-                        "Flow identifier of the form 'tcp:<n>' or "
-                        "'dns:<n>' as returned by list_flows."
-                    ),
-                },
-                "limit": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": _MAX_LIMIT,
-                },
-            },
-            "required": ["flow_id"],
-        },
     )
 
     def run(self, ctx: ToolContext, **kwargs: Any) -> ToolResult:

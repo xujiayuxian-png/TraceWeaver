@@ -1,10 +1,6 @@
 # TraceWeaver ROADMAP
 
-> **此文档是当前向前看的执行路线图**，与 `HANDOVER.md`（跨机交接信）和
-> `REFACTOR_PLAN.md` / `REFACTOR_PLAN_HARD.md`（已部分落地的内核纯化重构记录）
-> 职责互补。
->
-> 当三者冲突时，**以本文件为准**。
+> **此文档是当前向前看的执行路线图**。历史设计文档已归档删除，以本文件为准。
 
 ---
 
@@ -36,9 +32,9 @@
 
 | 维度 | 证据 |
 |---|---|
-| `core/` 纯协议 + `builtin/` 实现分层 | `@d:\code\TraceWeaver\traceweaver\core\protocols.py`、`@d:\code\TraceWeaver\traceweaver\builtin\` —— 即 `REFACTOR_PLAN.md` 阶段 A 已完成 |
+| `core/` 纯协议 + `builtin/` 实现分层 | `core/protocols.py`、`builtin/` 分层清晰 |
 | LLM-first 闭环（tshark → enrich → tools → kernel → final JSON） | M1 + M2 + M3 |
-| 工具只返事实、不下判断 | `summarize_capture` 只输出 `event_inventory / ue_overview / capture_signals`；`get_ue_timeline` 已删合成 hint —— 即 `REFACTOR_PLAN.md` 阶段 C 已完成 |
+| 工具只返事实、不下判断 | `summarize_capture` 只输出 `event_inventory / ue_overview / capture_signals`；registry 强制拒绝含 verdict/root_cause 的 ToolResult |
 | Kernel 防护（重复调用拒绝 + schema retry + budget warning） | `@d:\code\TraceWeaver\traceweaver\core\kernel.py` |
 | LLM 调用上限（max_tokens=12288 + timeout=300s） | `@d:\code\TraceWeaver\traceweaver\core\intelligence\litellm_adapter.py` |
 
@@ -49,9 +45,9 @@
 | **MCP server** | ✅ **M4' 已交付** — `traceweaver serve` 通过 stdio 暴露工具；支持多 Profile（`--profile` 可重复，工具名自动加 `<profile>__` 前缀） |
 | **HTTP server** | 仅 stdio transport；SSE / HTTP transport 延后 |
 | **Profile entry_points 第三方分发** | `pyproject.toml` 无 `[project.entry-points]`；`core/profile/loader.py` 自己注释 "pip-packaged profiles (entry_points) are M4+" |
-| **第二个 reference profile（验证协议无关性）** | 当前只有 Open5GS 5GC 一个 profile，无法证伪/证实"core 真的协议无关" |
-| **ToolSpec 自动从 Pydantic 生成** | 6 个工具仍各自手写 JSON Schema —— 即 `REFACTOR_PLAN.md` 阶段 B 未做 |
-| **Case Memory** / **RecordReplayIntelligence** 接入 | `recording/recorder.py` 2 KB 桩；CLI 未暴露 |
+| **第二个 reference profile（验证协议无关性）** | ✅ `web_l4l7_failures` 已交付，core 一行不改 |
+| **ToolSpec 自动从 Pydantic 生成** | ✅ 已完成 — 8 个工具迁移到 `ToolSpec.from_pydantic()` |
+| **Case Memory** / **RecordReplayIntelligence** 接入 | ✅ CLI `replay` 子命令 + 端到端测试框架已交付 |
 
 ### 显式不做（与目标冲突）
 
@@ -85,8 +81,7 @@
    14b Q6 的 7/9 剩余失败是**模型工具调用纪律**问题，不是平台/工具缺陷。
    **M3 收救，立刻进 M4'，不再在 M3 上绕圈**。
 
-2. **真正卡住"通用平台"的不是冒烟，是 M4-M7 完全空白。**
-   HANDOVER §5 表里的 M4 (Extension/分发)、M5 (Log)、M6 (Case Memory)、M7 (MCP) 一项都没动。
+2. **真正卡住"通用平台"的不是冒烟，是 M4-M7 完全空白。**（已解决：M4'-M6' 已交付）
 
 3. **M3 收救过程的两次关键工具侧修复**：
    - BUG-1（events 截断丢尾部）
@@ -95,7 +90,7 @@
    修复前 14b Q6 是 5/9（T1/T6/T8/T9 失败），修复后 14b Q6 稳定 7/9，MiniMax 9/9。
    **工具侧两个 bug 均已解决**——剩余两个失败 case 属于 LLM 工具调用纪律，**不可也不应靠平台解决**。
 
-4. **用户红线（继承 HANDOVER §4）**：
+4. **用户红线**：
    - 工具不下判断（`registry` 已强制拒绝含 `verdict/root_cause/failure_point/confidence` 的 ToolResult）
    - core 不依赖某个 profile
    - 不以"9b 9/9"或"14b 9/9"作为推进 M4+ 的门槛
@@ -112,7 +107,7 @@
 
 ---
 
-## §4 阶段重排（取代 HANDOVER 旧 M4-M7 的执行顺序）
+## §4 阶段重排
 
 > **原则：模型质量与平台能力解耦。**
 >
@@ -123,7 +118,7 @@
 | ID | 任务 | 状态 |
 |---|---|---|
 | F0.1 | 修 BUG-1：`summarize_capture.ue_overview.events` 改为 `events_head[:25] + events_tail[-25:] + events_truncated_count` | ✅ 完成，2 个回归测试（`tests/profiles/open5gs_5gc/test_tools.py`），全 profile 套件 231 passed |
-| F0.2 | 三份旧文档（HANDOVER / REFACTOR_PLAN / REFACTOR_PLAN_HARD）归档到 `docs/archive/2026-04-27/` 并加跳转 ROADMAP 标记 | ✅ 完成，`docs/archive/README.md` 已更新 |
+| F0.2 | 旧文档清理 | ✅ 完成 — 已删除，以 ROADMAP.md 为唯一权威 |
 | F0.3 | qwen3-14b + MiniMax-M2.7 双 baseline | ✅ 完成：14b Q6 7/9（`@d:\code\TraceWeaver\reports\baseline_qwen14b_v2.json`），MiniMax-M2.7 **9/9**（`@d:\code\TraceWeaver\reports\baseline_minimax_m27.json`） |
 | F0.4 | NAS 解密配置（`nas-5gs.null_decipher:TRUE` 写入 `profile.yaml.source_config.pcap.tshark_options`） | ✅ 完成，使 `REGISTRATION_ACCEPT` 等嵌套 NAS PDU 对 LLM 可见 |
 
@@ -254,7 +249,7 @@ wire pattern 推断 `rst_mid_handshake`。这个判定与 TLS 1.2 alert path 兼
 
 - ❌ **LogSource / ComposedSource 进 builtin**：保持单源接口，多源由用户写外部包
 - ❌ **metrics / trace source**：理由同上
-- ❌ **专用 UI**（HANDOVER §3 已定）：通过 MCP 接入用户已有的 agent UI
+- ❌ **专用 UI**：通过 MCP 接入用户已有的 agent UI（Claude Desktop / Cursor 等）
 - ❌ **多模型轮值 / 投票**：单后端，让 LLM 完整推理
 
 ### 持续（不阻塞主线）— 模型 / prompt 调优
@@ -279,7 +274,7 @@ wire pattern 推断 `rst_mid_handshake`。这个判定与 TLS 1.2 alert path 兼
 
 ---
 
-## §5 红线（继承 HANDOVER §4）
+## §5 红线
 
 1. ❌ 工具里不做诊断判断（registry 已强制拒绝含 verdict/root_cause/failure_point/confidence 的 ToolResult.data）
 2. ❌ core 不依赖某个 profile
@@ -318,7 +313,8 @@ wire pattern 推断 `rst_mid_handshake`。这个判定与 TLS 1.2 alert path 兼
 
 | 文件 | 职责 | 何时读 |
 |---|---|---|
-| `HANDOVER.md` | 跨机交接信，"在哪/装什么/怎么跑" | 新机器、新会话第一次进项目 |
-| `REFACTOR_PLAN.md` | 内核纯化重构记录（已部分落地） | 想了解 core/builtin 分层史 |
-| `REFACTOR_PLAN_HARD.md` | 同上的硬版本 | 同上 |
 | **`ROADMAP.md`（本文件）** | **当前向前看的执行计划** | **每次开工前** |
+| `README.md` | 项目介绍、快速上手、MCP 配置示例 | 新用户入口 |
+| `docs/guides/mcp-serve.md` | MCP 接入详细指南 | 配置 Claude Desktop / Cursor |
+| `docs/guides/python-packaging-profiles.md` | Profile pip 包分发教程 | 发布自定义 profile |
+| `docs/design/profile-web_l4l7_failures.md` | web_l4l7 profile 设计文档 | 理解第二个 reference profile |
